@@ -30,6 +30,24 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!--
+             这个 FileProvider 的作用是：
+             让系统相机 App 可以安全地访问我们提前创建好的图片文件。
+
+             为什么需要它？
+             因为从 Android 7.0 开始，应用之间不能直接暴露普通文件路径，
+             必须通过 `content://` 这种更安全的方式共享文件。
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

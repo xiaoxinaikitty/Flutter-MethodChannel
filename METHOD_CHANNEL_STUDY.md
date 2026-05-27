@@ -1,295 +1,505 @@
 # MethodChannel 学习笔记
 
-这个项目现在已经加入了两个最小可运行的 `MethodChannel` 示例：
+这个项目现在已经包含 4 个最小可运行的 `MethodChannel` 示例：
 
-1. 点击按钮，向原生平台请求“当前电量”
-2. 点击按钮，向原生平台请求“设备型号”
+1. 获取原生手机电量
+2. 获取原生设备型号
+3. Dart 传参数给原生，原生处理后再返回结果
+4. Dart 调用原生系统相机
 
-然后再把结果显示回 Flutter 页面。
+你可以把这 4 个例子理解成一个逐步升级的学习过程：
 
-你可以把这件事理解成 4 步：
-
-1. Flutter 先创建一条通信通道
-2. Flutter 通过这条通道发起不同的方法调用
-3. Android / iOS 原生代码接收这个调用
-4. 原生代码把结果返回给 Flutter
+1. 先学“Dart 调原生”
+2. 再学“同一条通道处理多个方法”
+3. 再学“Dart 给原生传参数”
+4. 最后学“原生打开系统界面，并异步返回结果”
 
 ---
 
 ## 1. 你现在要先看哪些文件
 
-最重要的 4 个文件：
+最重要的文件：
 
 1. [lib/main.dart](/D:/project/MethodChannel/lib/main.dart)
 2. [android/app/src/main/kotlin/com/example/channel/MainActivity.kt](/D:/project/MethodChannel/android/app/src/main/kotlin/com/example/channel/MainActivity.kt)
 3. [ios/Runner/AppDelegate.swift](/D:/project/MethodChannel/ios/Runner/AppDelegate.swift)
-4. [test/widget_test.dart](/D:/project/MethodChannel/test/widget_test.dart)
+4. [android/app/src/main/AndroidManifest.xml](/D:/project/MethodChannel/android/app/src/main/AndroidManifest.xml)
+5. [android/app/src/main/res/xml/file_paths.xml](/D:/project/MethodChannel/android/app/src/main/res/xml/file_paths.xml)
+6. [ios/Runner/Info.plist](/D:/project/MethodChannel/ios/Runner/Info.plist)
+7. [test/widget_test.dart](/D:/project/MethodChannel/test/widget_test.dart)
 
 建议阅读顺序：
 
 1. 先看 `lib/main.dart`
 2. 再看 Android 的 `MainActivity.kt`
 3. 然后看 iOS 的 `AppDelegate.swift`
-4. 最后看这个文档回顾整体流程
+4. 再看 AndroidManifest / Info.plist 这些平台配置
+5. 最后回来看这份文档
 
 ---
 
-## 2. Dart 端做了什么
+## 2. MethodChannel 最核心的 4 个概念
+
+学习 `MethodChannel` 时，你要一直记住这 4 个东西：
+
+1. 通道名
+2. 方法名
+3. 参数
+4. 返回值
+
+在当前项目里，一共有 2 条通道：
+
+1. `samples.flutter.dev/battery`
+2. `samples.flutter.dev/camera`
+
+其中：
+
+### 信息类通道
+
+通道名：
+
+```text
+samples.flutter.dev/battery
+```
+
+它下面挂了 3 个方法：
+
+- `getBatteryLevel`
+- `getDeviceModel`
+- `processUserName`
+
+### 相机类通道
+
+通道名：
+
+```text
+samples.flutter.dev/camera
+```
+
+它下面挂了 1 个方法：
+
+- `openCamera`
+
+---
+
+## 3. Dart 端做了什么
 
 位置：[lib/main.dart](/D:/project/MethodChannel/lib/main.dart)
 
-核心代码有两处。
+### 3.1 定义通道
 
-第一处：定义通道
+当前 Dart 端定义了两条通道：
 
 ```dart
 static const MethodChannel _channel = MethodChannel(
   'samples.flutter.dev/battery',
 );
+
+static const MethodChannel _cameraChannel = MethodChannel(
+  'samples.flutter.dev/camera',
+);
 ```
 
-这句代码的意思是：
+这表示：
 
-- Flutter 创建了一条名为 `samples.flutter.dev/battery` 的通信通道
-- 这个名字是 Dart 和原生之间的“暗号”
-- Android / iOS 必须也使用同一个名字
+- `_channel` 负责电量、设备型号、传参示例
+- `_cameraChannel` 负责系统相机示例
 
-如果名字不一样，会发生什么？
+如果通道名不一致，会怎样？
 
-- Flutter 调用时找不到原生接收方
+- Flutter 找不到原生接收方
 - 常见结果是 `MissingPluginException`
 
-第二处：调用原生方法
+---
+
+## 4. 前 3 个示例：同步风格的原生调用
+
+前 3 个示例的共同点是：
+
+- Dart 调用原生方法
+- 原生很快处理完
+- 原生马上把结果回给 Dart
+
+### 4.1 获取电量
 
 ```dart
-final int? batteryLevel = await _channel.invokeMethod<int>(
-  'getBatteryLevel',
+await _channel.invokeMethod<int>('getBatteryLevel');
+```
+
+返回值：
+
+- `int`
+
+### 4.2 获取设备型号
+
+```dart
+await _channel.invokeMethod<String>('getDeviceModel');
+```
+
+返回值：
+
+- `String`
+
+### 4.3 Dart 传参给原生
+
+```dart
+await _channel.invokeMethod<String>(
+  'processUserName',
+  <String, dynamic>{
+    'name': inputName,
+    'from': 'dart',
+  },
+);
+```
+
+这个例子比前两个多了一个重点：
+
+- Dart 不只是调用方法
+- 还通过 `arguments` 把 `Map` 传给原生
+
+---
+
+## 5. 第 4 个示例：Dart 调用原生系统相机
+
+这个例子是这次新增的重点。
+
+### 5.1 Dart 端调用方式
+
+```dart
+final String? imagePath = await _cameraChannel.invokeMethod<String>(
+  'openCamera',
 );
 ```
 
 这句代码的意思是：
 
-- Flutter 通过 `_channel` 发起一次调用
-- 调用的方法名叫 `getBatteryLevel`
-- 希望原生返回一个 `int`
-- 因为是异步调用，所以要写 `await`
+- 通过 `samples.flutter.dev/camera` 这条通道
+- 调用原生方法 `openCamera`
+- 希望原生最终返回拍照后的图片路径
 
-你可以把它理解为：
+返回值：
 
-- 通道名 = 打给哪条线路
-- 方法名 = 这次要办什么事
-- 返回值 = 原生办完事以后给 Flutter 的答复
+- `String`
 
-在当前项目里，Dart 端已经演示了两个方法名：
+这个 `String` 不是图片内容本身，而是：
 
-- `getBatteryLevel`
-- `getDeviceModel`
-
-这说明：
-
-- 同一条通道，不一定只做一件事
-- 你可以在同一条通道里定义多个原生方法
-- 原生端再通过方法名区分应该执行哪段逻辑
-
----
-
-## 3. Android 原生端做了什么
-
-位置：[android/app/src/main/kotlin/com/example/channel/MainActivity.kt](/D:/project/MethodChannel/android/app/src/main/kotlin/com/example/channel/MainActivity.kt)
-
-Android 端做了两件关键事情。
-
-第一件：注册同名通道
-
-```kotlin
-MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
-```
-
-其中 `channelName` 是：
-
-```kotlin
-"samples.flutter.dev/battery"
-```
-
-这必须和 Dart 完全一致。
-
-第二件：处理方法调用
-
-```kotlin
-if (call.method == "getBatteryLevel") {
-    val batteryLevel = getBatteryLevel()
-    result.success(batteryLevel)
-} else {
-    result.notImplemented()
-}
-```
-
-这段逻辑的意思是：
-
-- 如果 Flutter 调用的是 `getBatteryLevel`
-- 那么 Android 就真的去读取系统电量
-- 读完以后通过 `result.success(...)` 把结果返回给 Dart
-
-如果方法名对不上：
-
-- 就会执行 `result.notImplemented()`
-- Dart 侧会发现这个方法没被实现
-
-Android 获取电量的关键 API 是：
-
-```kotlin
-BatteryManager.BATTERY_PROPERTY_CAPACITY
-```
-
-它返回的是当前设备电量百分比，通常是 `0 ~ 100`。
-
-现在项目里又加了第二个 Android 原生方法：
-
-```kotlin
-"getDeviceModel" -> {
-    result.success(getDeviceModel())
-}
-```
-
-它的作用是：
-
-- 当 Flutter 调用 `getDeviceModel`
-- Android 读取设备品牌、型号、设备代号
-- 再把拼好的字符串返回给 Dart
-
-Android 获取设备型号使用的关键字段是：
-
-```kotlin
-Build.BRAND
-Build.MODEL
-Build.DEVICE
-```
-
----
-
-## 4. iOS 原生端做了什么
-
-位置：[ios/Runner/AppDelegate.swift](/D:/project/MethodChannel/ios/Runner/AppDelegate.swift)
-
-iOS 端和 Android 思路完全一样：
-
-1. 建立同名通道
-2. 监听不同的方法名
-3. 调用 iOS 的系统 API 读取对应数据
-4. 把结果返回给 Flutter
-
-关键代码：
-
-```swift
-let channel = FlutterMethodChannel(
-  name: "samples.flutter.dev/battery",
-  binaryMessenger: controller.binaryMessenger
-)
-```
-
-处理调用：
-
-```swift
-if call.method == "getBatteryLevel" {
-  let batteryLevel = self.receiveBatteryLevel()
-  result(batteryLevel)
-} else {
-  result(FlutterMethodNotImplemented)
-}
-```
-
-iOS 获取电量的关键 API 是：
-
-```swift
-UIDevice.current.batteryLevel
-```
-
-注意这个值不是 `0 ~ 100`，而是：
-
-- `0.0 ~ 1.0`
-
-所以代码里做了转换：
-
-```swift
-Int(batteryLevel * 100)
-```
-
-现在项目里也加了第二个 iOS 原生方法：
-
-```swift
-case "getDeviceModel":
-  result(self.getDeviceModel())
-```
-
-它返回的是：
-
-- 设备名
-- 系统名
-- 系统版本
+- 图片文件在本地磁盘上的路径
 
 例如：
 
-- `iPhone / iOS 18.0`
+```text
+/data/user/0/com.example.channel/cache/images/JPEG_20260527_123456_.jpg
+```
 
-对应的关键 API 是：
+或者：
 
-```swift
-UIDevice.current.model
-UIDevice.current.systemName
-UIDevice.current.systemVersion
+```text
+/private/var/mobile/Containers/Data/Application/.../tmp/camera_20260527_123456.jpg
 ```
 
 ---
 
-## 5. 整个调用链路怎么串起来
+## 6. 为什么相机示例单独拆成新通道
 
-当你点击页面按钮时，实际发生的顺序是：
+你可能会问：
 
-1. Flutter 按钮触发某个 Dart 函数
-2. Dart 调用：
-   `invokeMethod('某个方法名')`
-3. 原生平台收到这个方法名
-4. 原生根据方法名决定执行哪段逻辑
-5. 原生把结果返回给 Flutter
-6. Flutter `setState` 刷新页面
+“为什么相机这次不用 `samples.flutter.dev/battery`，而是新建 `samples.flutter.dev/camera`？”
 
-如果你点击“获取原生电量”：
+这是为了让结构更清晰。
 
-- Dart 调用 `getBatteryLevel`
-- 原生返回整数电量
+因为前 3 个示例更像“信息类能力”：
 
-如果你点击“获取设备型号”：
+- 获取电量
+- 获取设备信息
+- 传参数做字符串处理
 
-- Dart 调用 `getDeviceModel`
-- 原生返回字符串型号信息
+而相机是一个新的功能模块：
+
+- 它需要打开系统界面
+- 它是异步回调
+- 它需要文件保存
+- 它还涉及平台权限和配置
+
+所以拆成独立通道更容易理解，也更接近真实项目结构。
 
 ---
 
-## 6. 你必须记住的 3 个“必须一致”
+## 7. Android 原生端做了什么
 
-做 `MethodChannel` 最容易出错的地方，就是下面这 3 项不一致：
+位置：[android/app/src/main/kotlin/com/example/channel/MainActivity.kt](/D:/project/MethodChannel/android/app/src/main/kotlin/com/example/channel/MainActivity.kt)
+
+Android 端现在注册了两条通道。
+
+### 7.1 信息类通道
+
+```kotlin
+MethodChannel(flutterEngine.dartExecutor.binaryMessenger, infoChannelName)
+```
+
+负责：
+
+- `getBatteryLevel`
+- `getDeviceModel`
+- `processUserName`
+
+### 7.2 相机类通道
+
+```kotlin
+MethodChannel(flutterEngine.dartExecutor.binaryMessenger, cameraChannelName)
+```
+
+负责：
+
+- `openCamera`
+
+### 7.3 Android 打开系统相机的流程
+
+当 Dart 调用：
+
+```text
+openCamera
+```
+
+Android 会做这些事：
+
+1. 先创建一个临时图片文件
+2. 把这个文件转换成安全的 `content://` Uri
+3. 调用系统相机拍照
+4. 用户拍照完成后
+5. 把图片文件路径返回给 Dart
+
+### 7.4 为什么 Android 需要 FileProvider
+
+位置：[AndroidManifest.xml](/D:/project/MethodChannel/android/app/src/main/AndroidManifest.xml) 和 [file_paths.xml](/D:/project/MethodChannel/android/app/src/main/res/xml/file_paths.xml)
+
+这是因为：
+
+- Android 7.0 以后，应用之间不能直接共享普通文件路径
+- 必须通过 `FileProvider` 把文件包装成更安全的 `content://` Uri
+
+所以项目里加了：
+
+```xml
+<provider
+    android:name="androidx.core.content.FileProvider"
+    android:authorities="${applicationId}.fileprovider"
+    ...
+/>
+```
+
+以及：
+
+```xml
+<cache-path
+    name="camera_images"
+    path="images/" />
+```
+
+这表示：
+
+- 允许共享缓存目录下 `images/` 里的文件
+
+### 7.5 Android 为什么要先保存 `pendingCameraResult`
+
+因为相机不是同步返回。
+
+流程是：
+
+1. Dart 调 `openCamera`
+2. Android 立刻打开相机
+3. 此时还没有最终结果
+4. 等用户拍照完，系统回调才回来
+5. Android 再把结果回传给 Dart
+
+所以必须先把 Dart 的 `result` 暂存起来。
+
+---
+
+## 8. iOS 原生端做了什么
+
+位置：[ios/Runner/AppDelegate.swift](/D:/project/MethodChannel/ios/Runner/AppDelegate.swift)
+
+iOS 端也注册了两条通道：
+
+1. `samples.flutter.dev/battery`
+2. `samples.flutter.dev/camera`
+
+### 8.1 iOS 打开系统相机的流程
+
+当 Dart 调用：
+
+```text
+openCamera
+```
+
+iOS 会做这些事：
+
+1. 检查设备是否支持相机
+2. 创建 `UIImagePickerController`
+3. 设置 `sourceType = .camera`
+4. 弹出系统相机界面
+5. 用户拍照完成
+6. 在代理回调里拿到图片
+7. 把图片写入临时目录
+8. 把图片路径返回给 Dart
+
+### 8.2 为什么 iOS 要实现 delegate
+
+因为系统相机不是“函数一调用马上就返回图片”。
+
+而是：
+
+1. 先弹出系统界面
+2. 等用户操作
+3. 用户完成后系统再通知我们
+
+所以要实现：
+
+- `UIImagePickerControllerDelegate`
+- `UINavigationControllerDelegate`
+
+### 8.3 为什么 iOS 要加 NSCameraUsageDescription
+
+位置：[Info.plist](/D:/project/MethodChannel/ios/Runner/Info.plist)
+
+这里加了：
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>需要使用相机来演示 Flutter 通过 MethodChannel 调用原生系统相机。</string>
+```
+
+这表示：
+
+- 你必须告诉系统：为什么要用相机
+- 没有这项配置，iOS 不会允许应用正常访问相机
+
+---
+
+## 9. 第 4 个示例的完整交互过程
+
+这个流程建议你重点看。
+
+### 9.1 第一步：Flutter 页面点击“打开系统相机”
+
+用户点按钮后，Dart 进入：
+
+```dart
+_openNativeCamera()
+```
+
+### 9.2 第二步：Dart 调用相机通道
+
+```dart
+await _cameraChannel.invokeMethod<String>('openCamera');
+```
+
+这一步表示：
+
+- 通道名：`samples.flutter.dev/camera`
+- 方法名：`openCamera`
+- 期望原生返回：图片路径
+
+### 9.3 第三步：原生打开系统相机界面
+
+Android / iOS 收到这个调用后：
+
+- 不会立刻返回图片
+- 而是先把系统相机界面打开
+
+### 9.4 第四步：用户拍照
+
+这一步是用户在系统相机里完成的，不是在 Flutter 页面里完成的。
+
+### 9.5 第五步：原生拿到拍照结果
+
+拍照完成后：
+
+- Android 在拍照回调里拿到成功状态
+- iOS 在 delegate 里拿到图片对象
+
+### 9.6 第六步：原生保存图片文件
+
+为什么保存文件？
+
+因为 Dart 端最容易接收和展示的是：
+
+- 一段图片路径字符串
+
+而不是直接跨通道传整张图片的二进制数据。
+
+### 9.7 第七步：原生把图片路径回传给 Dart
+
+例如返回：
+
+```text
+/data/user/0/com.example.channel/cache/images/JPEG_20260527_123456_.jpg
+```
+
+或：
+
+```text
+/private/var/mobile/.../tmp/camera_20260527_123456.jpg
+```
+
+### 9.8 第八步：Dart 刷新页面
+
+Dart 收到路径后：
+
+- 更新结果文字
+- 页面显示“拍照成功，原生返回的图片路径”
+
+---
+
+## 10. 为什么相机是“异步返回结果”
+
+前 3 个示例更像：
+
+```text
+Dart 调一下 -> 原生立刻算一下 -> 立刻返回
+```
+
+而相机更像：
+
+```text
+Dart 调一下 -> 原生打开系统界面 -> 用户操作 -> 原生稍后再返回
+```
+
+所以相机示例和前 3 个示例有一个本质区别：
+
+- 它不是单纯的方法计算
+- 它涉及系统 UI 和用户交互
+
+这就是为什么：
+
+- Android 要暂存 `pendingCameraResult`
+- iOS 也要暂存 `pendingCameraResult`
+
+---
+
+## 11. 你必须记住的 5 个“必须一致”
+
+做 `MethodChannel` 最容易出错的地方，现在变成了 5 项：
 
 1. 通道名必须一致
 2. 方法名必须一致
 3. 返回值类型要基本对应
+4. 参数结构要对得上
+5. 平台配置也要补齐
 
-在这个项目里分别是：
+例如：
 
-- 通道名：`samples.flutter.dev/battery`
-- 方法名 1：`getBatteryLevel`
-- 方法名 2：`getDeviceModel`
-- 返回值 1：`int`
-- 返回值 2：`String`
+- Dart 用的是 `samples.flutter.dev/camera`
+- Android / iOS 也必须注册同名通道
 
-举例：
+再比如：
 
-- Dart 写的是 `getBatteryLevel`
-- Android 写成了 `getBattery`
-- 那么 Flutter 调用后就找不到这个方法
+- Dart 调用的是 `openCamera`
+- 原生也必须监听 `openCamera`
 
 ---
 
-## 7. 常见返回方式
+## 12. 常见返回方式
 
 原生端常见有 3 种结果：
 
@@ -309,9 +519,15 @@ iOS：
 - 失败：`result(FlutterError(...))`
 - 未实现：`result(FlutterMethodNotImplemented)`
 
+在相机示例里：
+
+- 拍照成功：返回图片路径
+- 用户取消：返回错误
+- 平台无相机：返回错误
+
 ---
 
-## 8. Dart 侧为什么要写 try-catch
+## 13. Dart 侧为什么要写 try-catch
 
 因为调用原生并不一定成功。
 
@@ -321,6 +537,9 @@ iOS：
 2. 通道名写错了
 3. 方法名写错了
 4. 原生端主动返回错误
+5. 原生没拿到参数
+6. 用户取消拍照
+7. 设备没有相机
 
 所以 Dart 端写了：
 
@@ -332,7 +551,7 @@ iOS：
 
 ---
 
-## 9. 如何运行这个示例
+## 14. 如何运行这个示例
 
 ### 在 Android 真机或模拟器运行
 
@@ -340,13 +559,14 @@ iOS：
 flutter run
 ```
 
-如果你连接的是 Android 设备：
+你现在可以测试 4 个功能：
 
-- 打开应用
-- 点击“获取原生电量”
-- 页面会显示当前电量百分比
+1. 点击“获取原生电量”
+2. 点击“获取设备型号”
+3. 输入名字后点击“把名字传给原生”
+4. 点击“打开系统相机”
 
-### 在 iPhone 模拟器或真机运行
+### 在 iPhone 真机运行
 
 同样使用：
 
@@ -356,56 +576,73 @@ flutter run
 
 前提是你在 macOS 上用 Xcode 环境运行 iOS。
 
+注意：
+
+- iOS 模拟器通常不适合测试真正的相机拍照
+- 真机体验更接近真实结果
+
 ### 在 Windows / Web / macOS / Linux 上运行
 
-页面仍然能打开，但这个示例不会真的获取手机电量，因为你没有对应的 Android / iOS 原生层。
+页面仍然能打开，但原生方法通常不会真的执行，因为没有对应的 Android / iOS 原生层。
 
 这是正常现象。
 
 ---
 
-## 10. 下一步你可以练什么
+## 15. 为什么这里有时用一条通道，有时拆成两条通道
 
-学完这两个示例后，建议你自己动手改成下面这些练习：
+这个项目故意同时演示了两种组织方式。
 
-1. 把 `getBatteryLevel` 改成 `getPlatformVersion`
-2. 让 Dart 传参数给原生，比如用户名
-3. 让原生返回一个 `Map`
-4. 试着增加第三个方法，比如 `showNativeToast`
-5. 尝试把“通道名”改成你自己的项目命名空间
+### 第一种：一条通道挂多个方法
+
+例如：
+
+- `samples.flutter.dev/battery`
+
+下面挂：
+
+- `getBatteryLevel`
+- `getDeviceModel`
+- `processUserName`
+
+适合：
+
+- 功能相近
+- 数量不多
+- 结构还比较清晰
+
+### 第二种：拆成独立通道
+
+例如：
+
+- `samples.flutter.dev/camera`
+
+下面挂：
+
+- `openCamera`
+
+适合：
+
+- 功能已经变成独立模块
+- 需要单独管理
+- 原生逻辑明显更复杂
 
 ---
 
-## 12. 为什么这里继续用同一条通道
+## 16. 下一步你可以练什么
 
-你可能会问：
+学完这 4 个示例后，建议你自己动手改成下面这些练习：
 
-“既然已经有获取电量的通道了，为什么获取设备型号不再新建一条通道？”
-
-这是一个很好的问题。
-
-这个项目故意继续使用同一条通道，是为了让你理解：
-
-- 一条 `MethodChannel` 更像“一个服务入口”
-- 它下面可以挂多个方法
-- 就像后端一个接口模块下面可以有多个 API
-
-什么时候适合继续用同一条通道？
-
-- 这些功能属于同一类能力
-- 你希望统一管理它们
-- 方法数量不多，结构还比较清晰
-
-什么时候可以拆成多条通道？
-
-- 功能模块差异很大
-- 想把不同能力拆开管理
-- 原生端代码已经明显变复杂
+1. 拍照完成后，在 Dart 页面直接显示图片
+2. 让相机方法支持参数，比如是否使用前置摄像头
+3. 让原生返回一个 `Map`，里面包含路径、宽高、时间
+4. 增加第五个方法，比如打开系统相册
+5. 把相机模块继续拆成独立的 Dart service 类
 
 ---
 
-## 11. 一句话总结
+## 17. 一句话总结
 
 `MethodChannel` 的本质就是：
 
-Flutter 用“通道名 + 方法名”去调用原生代码，原生根据方法名执行不同逻辑，再把结果回传给 Flutter。
+Flutter 用“通道名 + 方法名 + 参数”去调用原生代码，原生读取参数、执行逻辑、必要时打开系统界面，最后再把结果回传给 Flutter。

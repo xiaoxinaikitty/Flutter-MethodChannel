@@ -9,6 +9,8 @@ void main() {
     expect(find.text('MethodChannel 入门示例'), findsOneWidget);
     expect(find.text('获取原生电量'), findsOneWidget);
     expect(find.text('获取设备型号'), findsOneWidget);
-    expect(find.textContaining('MethodChannel 调用多个原生方法'), findsOneWidget);
+    expect(find.text('把名字传给原生'), findsOneWidget);
+    expect(find.text('打开系统相机'), findsOneWidget);
+    expect(find.textContaining('MethodChannel 调用多个原生能力'), findsOneWidget);
   });
 }
