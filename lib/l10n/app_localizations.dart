@@ -32,6 +32,12 @@ class AppLocalizations {
     return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
   }
 
+  /// 当前项目的文案表。
+  ///
+  /// 第一层 key 是语言代码，例如 zh / en。
+  /// 第二层 key 是具体文案名称，例如 homeTitle / themeTitle。
+  ///
+  /// 页面永远通过 key 取文案，不直接关心当前是中文还是英文。
   static const Map<String, Map<String, String>> _values = {
     'zh': {
       'appTitle': 'MethodChannel 学习目录',
@@ -50,6 +56,20 @@ class AppLocalizations {
       'i18nTitle': '国际化代码示例',
       'i18nDescription':
           '演示 Locale、LocalizationsDelegate、supportedLocales 和语言切换。',
+      'themeTitle': '多主题切换',
+      'themeDescription': '演示 ThemeMode、浅色/深色模式和主题色切换。',
+      'themeModeTitle': '主题模式',
+      'themeColorTitle': '主题色',
+      'themePreviewTitle': '主题预览',
+      'themePreviewContent': '切换模式或颜色后，整个 App 会立即使用新的 ThemeData。',
+      'themeSystem': '跟随系统',
+      'themeLight': '浅色',
+      'themeDark': '深色',
+      'themeColorBlue': '蓝色',
+      'themeColorTeal': '青绿',
+      'themeColorRose': '玫红',
+      'themeColorPurple': '紫色',
+      'themeColorOrange': '橙色',
       'openDemo': '进入示例',
       'learningFocus': '学习重点',
       'result': '调用结果',
@@ -131,6 +151,22 @@ class AppLocalizations {
       'i18nTitle': 'Internationalization example',
       'i18nDescription':
           'Learn Locale, LocalizationsDelegate, supportedLocales, and runtime language switching.',
+      'themeTitle': 'Theme switching',
+      'themeDescription':
+          'Learn ThemeMode, light/dark mode, and seed color switching.',
+      'themeModeTitle': 'Theme mode',
+      'themeColorTitle': 'Theme color',
+      'themePreviewTitle': 'Theme preview',
+      'themePreviewContent':
+          'After switching mode or color, the whole app immediately uses the new ThemeData.',
+      'themeSystem': 'System',
+      'themeLight': 'Light',
+      'themeDark': 'Dark',
+      'themeColorBlue': 'Blue',
+      'themeColorTeal': 'Teal',
+      'themeColorRose': 'Rose',
+      'themeColorPurple': 'Purple',
+      'themeColorOrange': 'Orange',
       'openDemo': 'Open demo',
       'learningFocus': 'Learning focus',
       'result': 'Result',
@@ -211,10 +247,23 @@ class AppLocalizations {
     },
   };
 
+  /// 读取普通文案。
+  ///
+  /// 查找顺序：
+  /// 1. 当前语言
+  /// 2. 中文兜底
+  /// 3. key 本身
+  ///
+  /// 这样即使某个翻译漏配，页面也不会因为找不到文案而崩溃。
   String text(String key) {
     return _values[locale.languageCode]?[key] ?? _values['zh']![key] ?? key;
   }
 
+  /// 读取带参数的文案。
+  ///
+  /// 例如模板：'当前电量：{value}%'
+  /// 调用：format('batterySuccess', {'value': 85})
+  /// 结果：'当前电量：85%'
   String format(String key, Map<String, Object?> values) {
     var template = text(key);
     for (final entry in values.entries) {
@@ -230,6 +279,7 @@ class _AppLocalizationsDelegate
 
   @override
   bool isSupported(Locale locale) {
+    /// Flutter 会先问代理：当前系统语言是否支持。
     return AppLocalizations.supportedLocales.any(
       (supportedLocale) => supportedLocale.languageCode == locale.languageCode,
     );
@@ -237,13 +287,21 @@ class _AppLocalizationsDelegate
 
   @override
   Future<AppLocalizations> load(Locale locale) async {
+    /// 真正加载本地化对象。
+    ///
+    /// 当前文案写在内存 Map 中，所以这里可以直接同步创建并返回。
     return AppLocalizations(locale);
   }
 
+  /// 文案是常量 Map，不需要重新加载代理。
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
 }
 
+/// 给 BuildContext 增加 context.l10n 快捷入口。
+///
+/// 页面里使用 context.l10n.text('homeTitle')，
+/// 比 AppLocalizations.of(context).text('homeTitle') 更简洁。
 extension L10nContext on BuildContext {
   AppLocalizations get l10n => AppLocalizations.of(this);
 }
