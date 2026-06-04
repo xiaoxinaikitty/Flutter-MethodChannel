@@ -5,7 +5,9 @@
 1. 获取原生手机电量
 2. 获取原生设备型号
 3. Dart 传参数给原生，原生处理后再返回结果
-4. Dart 调用原生系统相机
+4. Dart 调用原生媒体能力：
+   - 打开系统相机拍照
+   - 打开系统相册选择图片
 
 你可以把这 4 个例子理解成一个逐步升级的学习过程：
 
@@ -68,7 +70,7 @@ samples.flutter.dev/battery
 - `getDeviceModel`
 - `processUserName`
 
-### 相机类通道
+### 媒体类通道
 
 通道名：
 
@@ -76,9 +78,10 @@ samples.flutter.dev/battery
 samples.flutter.dev/camera
 ```
 
-它下面挂了 1 个方法：
+它下面挂了 2 个方法：
 
 - `openCamera`
+- `pickImageFromGallery`
 
 ---
 
@@ -103,7 +106,7 @@ static const MethodChannel _cameraChannel = MethodChannel(
 这表示：
 
 - `_channel` 负责电量、设备型号、传参示例
-- `_cameraChannel` 负责系统相机示例
+- `_cameraChannel` 负责媒体类示例
 
 如果通道名不一致，会怎样？
 
@@ -159,78 +162,93 @@ await _channel.invokeMethod<String>(
 
 ---
 
-## 5. 第 4 个示例：Dart 调用原生系统相机
+## 5. 第 4 个示例：Dart 调用原生媒体能力
 
-这个例子是这次新增的重点。
+这个示例现在已经不是“只打开系统相机”，而是升级成了统一上传入口：
 
-### 5.1 Dart 端调用方式
+1. Flutter 先弹出底部菜单
+2. 用户选择：
+   - 拍照
+   - 从相册选择
+3. Dart 再调用对应原生方法
+
+### 5.1 为什么推荐这种方案
+
+因为我不建议你依赖：
+
+- “系统相机界面里刚好有相册入口”
+
+原因是不同平台、不同厂商差异太大，Flutter 无法稳定控制。
+
+更推荐的做法是：
+
+1. Flutter 先自己让用户做选择
+2. 再分别调用：
+   - `openCamera`
+   - `pickImageFromGallery`
+
+这样更稳定，也更容易理解。
+
+### 5.2 Dart 端统一入口
+
+当前页面里的主按钮会先弹出底部菜单：
+
+- 拍照
+- 从相册选择
+- 取消
+
+这一步对应的方法是：
 
 ```dart
-final String? imagePath = await _cameraChannel.invokeMethod<String>(
-  'openCamera',
-);
+_showImageSourceActionSheet()
 ```
 
-这句代码的意思是：
+### 5.3 Dart 调用系统相机
 
-- 通过 `samples.flutter.dev/camera` 这条通道
-- 调用原生方法 `openCamera`
-- 希望原生最终返回拍照后的图片路径
-
-返回值：
-
-- `String`
-
-这个 `String` 不是图片内容本身，而是：
-
-- 图片文件在本地磁盘上的路径
-
-例如：
-
-```text
-/data/user/0/com.example.channel/cache/images/JPEG_20260527_123456_.jpg
+```dart
+await _cameraChannel.invokeMethod<String>('openCamera');
 ```
 
-或者：
+这表示：
 
-```text
-/private/var/mobile/Containers/Data/Application/.../tmp/camera_20260527_123456.jpg
+- 通道名：`samples.flutter.dev/camera`
+- 方法名：`openCamera`
+- 原生最终返回：图片路径
+
+### 5.4 Dart 调用系统相册
+
+```dart
+await _cameraChannel.invokeMethod<String>('pickImageFromGallery');
 ```
+
+这表示：
+
+- 通道名：`samples.flutter.dev/camera`
+- 方法名：`pickImageFromGallery`
+- 原生最终返回：图片路径
+
+### 5.5 为什么两条路径都统一返回图片路径
+
+因为 Dart 页面当前最容易统一处理的是：
+
+- 本地图片路径
+
+这样不管图片来自：
+
+- 相机
+- 相册
+
+Flutter 页面都能用同一套预览逻辑去显示。
 
 ---
 
-## 6. 为什么相机示例单独拆成新通道
-
-你可能会问：
-
-“为什么相机这次不用 `samples.flutter.dev/battery`，而是新建 `samples.flutter.dev/camera`？”
-
-这是为了让结构更清晰。
-
-因为前 3 个示例更像“信息类能力”：
-
-- 获取电量
-- 获取设备信息
-- 传参数做字符串处理
-
-而相机是一个新的功能模块：
-
-- 它需要打开系统界面
-- 它是异步回调
-- 它需要文件保存
-- 它还涉及平台权限和配置
-
-所以拆成独立通道更容易理解，也更接近真实项目结构。
-
----
-
-## 7. Android 原生端做了什么
+## 6. Android 原生端做了什么
 
 位置：[android/app/src/main/kotlin/com/example/channel/MainActivity.kt](/D:/project/MethodChannel/android/app/src/main/kotlin/com/example/channel/MainActivity.kt)
 
 Android 端现在注册了两条通道。
 
-### 7.1 信息类通道
+### 6.1 信息类通道
 
 ```kotlin
 MethodChannel(flutterEngine.dartExecutor.binaryMessenger, infoChannelName)
@@ -242,7 +260,7 @@ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, infoChannelName)
 - `getDeviceModel`
 - `processUserName`
 
-### 7.2 相机类通道
+### 6.2 媒体类通道
 
 ```kotlin
 MethodChannel(flutterEngine.dartExecutor.binaryMessenger, cameraChannelName)
@@ -251,8 +269,9 @@ MethodChannel(flutterEngine.dartExecutor.binaryMessenger, cameraChannelName)
 负责：
 
 - `openCamera`
+- `pickImageFromGallery`
 
-### 7.3 Android 打开系统相机的流程
+### 6.3 Android 打开系统相机的流程
 
 当 Dart 调用：
 
@@ -268,7 +287,45 @@ Android 会做这些事：
 4. 用户拍照完成后
 5. 把图片文件路径返回给 Dart
 
-### 7.4 为什么 Android 需要 FileProvider
+### 6.4 Android 打开系统相册的流程
+
+当 Dart 调用：
+
+```text
+pickImageFromGallery
+```
+
+Android 会做这些事：
+
+1. 创建系统图片选择 Intent
+2. 打开系统相册 / 文件选择器
+3. 用户选中一张图片
+4. 系统返回一个 `Uri`
+5. Android 把这个 `Uri` 对应的内容复制到应用缓存目录
+6. 返回新文件路径给 Dart
+
+### 6.5 为什么 Android 相册返回后还要复制文件
+
+因为系统相册返回给你的往往不是普通文件路径，而是：
+
+```text
+content://...
+```
+
+这种 Uri 对 Dart 页面当前的本地文件预览并不够直接。
+
+所以 Android 做了一步转换：
+
+1. 读取 `content://` Uri 的输入流
+2. 复制到应用缓存目录
+3. 返回缓存文件路径
+
+这样 Dart 页面就能继续统一显示：
+
+- 拍照得到的图片
+- 相册选中的图片
+
+### 6.6 为什么 Android 需要 FileProvider
 
 位置：[AndroidManifest.xml](/D:/project/MethodChannel/android/app/src/main/AndroidManifest.xml) 和 [file_paths.xml](/D:/project/MethodChannel/android/app/src/main/res/xml/file_paths.xml)
 
@@ -277,45 +334,11 @@ Android 会做这些事：
 - Android 7.0 以后，应用之间不能直接共享普通文件路径
 - 必须通过 `FileProvider` 把文件包装成更安全的 `content://` Uri
 
-所以项目里加了：
-
-```xml
-<provider
-    android:name="androidx.core.content.FileProvider"
-    android:authorities="${applicationId}.fileprovider"
-    ...
-/>
-```
-
-以及：
-
-```xml
-<cache-path
-    name="camera_images"
-    path="images/" />
-```
-
-这表示：
-
-- 允许共享缓存目录下 `images/` 里的文件
-
-### 7.5 Android 为什么要先保存 `pendingCameraResult`
-
-因为相机不是同步返回。
-
-流程是：
-
-1. Dart 调 `openCamera`
-2. Android 立刻打开相机
-3. 此时还没有最终结果
-4. 等用户拍照完，系统回调才回来
-5. Android 再把结果回传给 Dart
-
-所以必须先把 Dart 的 `result` 暂存起来。
+这主要是为“拍照写入文件”这条路径服务的。
 
 ---
 
-## 8. iOS 原生端做了什么
+## 7. iOS 原生端做了什么
 
 位置：[ios/Runner/AppDelegate.swift](/D:/project/MethodChannel/ios/Runner/AppDelegate.swift)
 
@@ -324,7 +347,7 @@ iOS 端也注册了两条通道：
 1. `samples.flutter.dev/battery`
 2. `samples.flutter.dev/camera`
 
-### 8.1 iOS 打开系统相机的流程
+### 7.1 iOS 打开系统相机的流程
 
 当 Dart 调用：
 
@@ -343,115 +366,150 @@ iOS 会做这些事：
 7. 把图片写入临时目录
 8. 把图片路径返回给 Dart
 
-### 8.2 为什么 iOS 要实现 delegate
+### 7.2 iOS 打开系统相册的流程
 
-因为系统相机不是“函数一调用马上就返回图片”。
+当 Dart 调用：
 
-而是：
+```text
+pickImageFromGallery
+```
 
-1. 先弹出系统界面
-2. 等用户操作
-3. 用户完成后系统再通知我们
+iOS 会做两层兼容：
 
-所以要实现：
+#### iOS 14 及以上
 
-- `UIImagePickerControllerDelegate`
-- `UINavigationControllerDelegate`
+优先使用：
 
-### 8.3 为什么 iOS 要加 NSCameraUsageDescription
+- `PHPickerViewController`
+
+这是更现代的系统相册选择器。
+
+#### iOS 12 / 13
+
+自动回退到：
+
+- `UIImagePickerController`
+- `sourceType = .photoLibrary`
+
+这意味着：
+
+- 你的项目最低支持版本虽然是 iOS 12
+- 但高版本系统会优先走更现代的方案
+
+### 7.3 为什么 iOS 相册返回后也要存成文件
+
+原因和 Android 一样：
+
+- Dart 页面当前统一按“本地文件路径”显示图片
+
+所以无论图片来自：
+
+- 相机
+- 相册
+
+iOS 最终都会：
+
+1. 得到图片对象
+2. 转成 JPEG 数据
+3. 写入临时目录
+4. 返回图片路径给 Dart
+
+### 7.4 为什么 iOS 要加权限说明
 
 位置：[Info.plist](/D:/project/MethodChannel/ios/Runner/Info.plist)
 
-这里加了：
+这里现在有两项：
 
 ```xml
 <key>NSCameraUsageDescription</key>
 <string>需要使用相机来演示 Flutter 通过 MethodChannel 调用原生系统相机。</string>
+
+<key>NSPhotoLibraryUsageDescription</key>
+<string>需要访问系统相册来演示 Flutter 通过 MethodChannel 选择图片。</string>
 ```
 
 这表示：
 
-- 你必须告诉系统：为什么要用相机
-- 没有这项配置，iOS 不会允许应用正常访问相机
+- 用相机前要告诉系统原因
+- 读相册前也要告诉系统原因
 
 ---
 
-## 9. 第 4 个示例的完整交互过程
+## 8. 第 4 个示例的完整交互过程
 
 这个流程建议你重点看。
 
-### 9.1 第一步：Flutter 页面点击“打开系统相机”
+### 8.1 第一步：Flutter 页面点击“选择图片来源”
 
 用户点按钮后，Dart 进入：
 
 ```dart
-_openNativeCamera()
+_showImageSourceActionSheet()
 ```
 
-### 9.2 第二步：Dart 调用相机通道
+### 8.2 第二步：Flutter 弹出底部菜单
+
+菜单选项有：
+
+- 拍照
+- 从相册选择
+- 取消
+
+### 8.3 第三步：用户做选择
+
+如果用户选：
+
+- `拍照`
+
+那么 Dart 会调用：
 
 ```dart
-await _cameraChannel.invokeMethod<String>('openCamera');
+openCamera
 ```
 
-这一步表示：
+如果用户选：
 
-- 通道名：`samples.flutter.dev/camera`
-- 方法名：`openCamera`
-- 期望原生返回：图片路径
+- `从相册选择`
 
-### 9.3 第三步：原生打开系统相机界面
+那么 Dart 会调用：
 
-Android / iOS 收到这个调用后：
-
-- 不会立刻返回图片
-- 而是先把系统相机界面打开
-
-### 9.4 第四步：用户拍照
-
-这一步是用户在系统相机里完成的，不是在 Flutter 页面里完成的。
-
-### 9.5 第五步：原生拿到拍照结果
-
-拍照完成后：
-
-- Android 在拍照回调里拿到成功状态
-- iOS 在 delegate 里拿到图片对象
-
-### 9.6 第六步：原生保存图片文件
-
-为什么保存文件？
-
-因为 Dart 端最容易接收和展示的是：
-
-- 一段图片路径字符串
-
-而不是直接跨通道传整张图片的二进制数据。
-
-### 9.7 第七步：原生把图片路径回传给 Dart
-
-例如返回：
-
-```text
-/data/user/0/com.example.channel/cache/images/JPEG_20260527_123456_.jpg
+```dart
+pickImageFromGallery
 ```
 
-或：
+### 8.4 第四步：原生打开系统界面
 
-```text
-/private/var/mobile/.../tmp/camera_20260527_123456.jpg
-```
+此时原生会根据方法名决定：
 
-### 9.8 第八步：Dart 刷新页面
+- 打开系统相机
+- 或打开系统相册
 
-Dart 收到路径后：
+### 8.5 第五步：用户完成操作
 
-- 更新结果文字
-- 页面显示“拍照成功，原生返回的图片路径”
+可能发生三种情况：
+
+1. 成功拍照
+2. 成功选图
+3. 取消操作
+
+### 8.6 第六步：原生把图片转换成统一结果
+
+为了让 Dart 页面更容易处理，原生会统一返回：
+
+- 本地图片路径
+
+### 8.7 第七步：Dart 收到路径并刷新页面
+
+最后 Flutter 会：
+
+1. 保存图片路径到状态
+2. 更新结果文字
+3. 页面显示缩略图
+4. 支持点击放大查看
 
 ---
 
-## 10. 为什么相机是“异步返回结果”
+## 9. 为什么媒体类操作属于“异步返回结果”
 
 前 3 个示例更像：
 
@@ -459,25 +517,20 @@ Dart 收到路径后：
 Dart 调一下 -> 原生立刻算一下 -> 立刻返回
 ```
 
-而相机更像：
+而媒体类操作更像：
 
 ```text
 Dart 调一下 -> 原生打开系统界面 -> 用户操作 -> 原生稍后再返回
 ```
 
-所以相机示例和前 3 个示例有一个本质区别：
-
-- 它不是单纯的方法计算
-- 它涉及系统 UI 和用户交互
-
 这就是为什么：
 
 - Android 要暂存 `pendingCameraResult`
-- iOS 也要暂存 `pendingCameraResult`
+- iOS 也要暂存对应的待返回结果
 
 ---
 
-## 11. 你必须记住的 5 个“必须一致”
+## 10. 你必须记住的 5 个“必须一致”
 
 做 `MethodChannel` 最容易出错的地方，现在变成了 5 项：
 
@@ -494,12 +547,12 @@ Dart 调一下 -> 原生打开系统界面 -> 用户操作 -> 原生稍后再返
 
 再比如：
 
-- Dart 调用的是 `openCamera`
-- 原生也必须监听 `openCamera`
+- Dart 调用的是 `pickImageFromGallery`
+- 原生也必须监听 `pickImageFromGallery`
 
 ---
 
-## 12. 常见返回方式
+## 11. 常见返回方式
 
 原生端常见有 3 种结果：
 
@@ -519,15 +572,16 @@ iOS：
 - 失败：`result(FlutterError(...))`
 - 未实现：`result(FlutterMethodNotImplemented)`
 
-在相机示例里：
+在媒体类示例里：
 
 - 拍照成功：返回图片路径
+- 选图成功：返回图片路径
 - 用户取消：返回错误
-- 平台无相机：返回错误
+- 平台不可用：返回错误
 
 ---
 
-## 13. Dart 侧为什么要写 try-catch
+## 12. Dart 侧为什么要写 try-catch
 
 因为调用原生并不一定成功。
 
@@ -539,7 +593,9 @@ iOS：
 4. 原生端主动返回错误
 5. 原生没拿到参数
 6. 用户取消拍照
-7. 设备没有相机
+7. 用户取消选图
+8. 设备没有相机
+9. 设备没有可用相册选择器
 
 所以 Dart 端写了：
 
@@ -551,7 +607,7 @@ iOS：
 
 ---
 
-## 14. 如何运行这个示例
+## 13. 如何运行这个示例
 
 ### 在 Android 真机或模拟器运行
 
@@ -564,7 +620,9 @@ flutter run
 1. 点击“获取原生电量”
 2. 点击“获取设备型号”
 3. 输入名字后点击“把名字传给原生”
-4. 点击“打开系统相机”
+4. 点击“选择图片来源”，再选：
+   - 拍照
+   - 从相册选择
 
 ### 在 iPhone 真机运行
 
@@ -579,7 +637,7 @@ flutter run
 注意：
 
 - iOS 模拟器通常不适合测试真正的相机拍照
-- 真机体验更接近真实结果
+- 但相册选择一般更容易测试
 
 ### 在 Windows / Web / macOS / Linux 上运行
 
@@ -589,7 +647,7 @@ flutter run
 
 ---
 
-## 15. 为什么这里有时用一条通道，有时拆成两条通道
+## 14. 为什么这里有时用一条通道，有时拆成两条通道
 
 这个项目故意同时演示了两种组织方式。
 
@@ -620,6 +678,7 @@ flutter run
 下面挂：
 
 - `openCamera`
+- `pickImageFromGallery`
 
 适合：
 
@@ -629,19 +688,19 @@ flutter run
 
 ---
 
-## 16. 下一步你可以练什么
+## 15. 下一步你可以练什么
 
 学完这 4 个示例后，建议你自己动手改成下面这些练习：
 
-1. 拍照完成后，在 Dart 页面直接显示图片
-2. 让相机方法支持参数，比如是否使用前置摄像头
-3. 让原生返回一个 `Map`，里面包含路径、宽高、时间
-4. 增加第五个方法，比如打开系统相册
-5. 把相机模块继续拆成独立的 Dart service 类
+1. 让相机方法支持参数，比如是否使用前置摄像头
+2. 让原生返回一个 `Map`，里面包含路径、宽高、时间
+3. 支持多图选择
+4. 增加第五个方法，比如录像
+5. 把媒体模块继续拆成独立的 Dart service 类
 
 ---
 
-## 17. 一句话总结
+## 16. 一句话总结
 
 `MethodChannel` 的本质就是：
 

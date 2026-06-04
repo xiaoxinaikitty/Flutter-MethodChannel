@@ -45,6 +45,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>需要使用相机来演示 Flutter 通过 MethodChannel 调用原生系统相机。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>需要访问系统相册来演示 Flutter 通过 MethodChannel 选择图片。</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 </dict>

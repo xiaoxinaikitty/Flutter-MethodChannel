@@ -1,8 +1,9 @@
 import Flutter
+import PhotosUI
 import UIKit
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+@objc class AppDelegate: FlutterAppDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, PHPickerViewControllerDelegate {
   /// 这是原来的“信息类”通道。
   ///
   /// 它负责：
@@ -11,23 +12,19 @@ import UIKit
   /// - Dart 传字符串给原生处理
   private let infoChannelName = "samples.flutter.dev/battery"
 
-  /// 这是新的“相机通道”。
+  /// 这是“媒体类”通道。
   ///
   /// Dart 端会通过这条通道调用：
-  /// `openCamera`
+  /// - `openCamera`
+  /// - `pickImageFromGallery`
   private let cameraChannelName = "samples.flutter.dev/camera"
 
   /// 这个变量用来暂存“当前等待返回的 Dart 调用结果”。
   ///
-  /// 为什么需要它？
-  /// 因为打开系统相机不是同步操作：
-  /// 1. Dart 先调用 `openCamera`
-  /// 2. iOS 弹出系统相机
-  /// 3. 用户拍照或取消
-  /// 4. 过一会儿 delegate 回调才会触发
-  ///
-  /// 所以我们要先把 Flutter result 保存起来，等拍照结束后再返回给 Dart。
-  private var pendingCameraResult: FlutterResult?
+  /// 为什么现在不再叫 `pendingCameraResult`？
+  /// 因为这条通道现在不只负责相机，也负责相册选择，
+  /// 所以这里改成更通用的名字：`pendingMediaResult`
+  private var pendingMediaResult: FlutterResult?
 
   override func application(
     _ application: UIApplication,
@@ -81,7 +78,7 @@ import UIKit
       }
     }
 
-    /// 注册“相机类”通道。
+    /// 注册“媒体类”通道。
     let cameraChannel = FlutterMethodChannel(
       name: cameraChannelName,
       binaryMessenger: controller.binaryMessenger
@@ -91,6 +88,9 @@ import UIKit
       switch call.method {
       case "openCamera":
         self.openCamera(from: controller, result: result)
+
+      case "pickImageFromGallery":
+        self.pickImageFromGallery(from: controller, result: result)
 
       default:
         result(FlutterMethodNotImplemented)
@@ -142,28 +142,20 @@ import UIKit
 
   /// 打开系统相机。
   ///
-  /// 这是第四个示例的核心函数。
-  ///
-  /// 执行流程：
-  /// 1. Dart 调用 `openCamera`
-  /// 2. iOS 检查当前设备是否支持相机
-  /// 3. 创建系统相机控制器
-  /// 4. 展示系统相机界面
-  /// 5. 用户拍照完成后，在代理回调里保存图片并返回路径给 Dart
+  /// 这是媒体类通道里的第一个方法。
+  /// 用户走的是“拍照”这条路径。
   private func openCamera(from controller: FlutterViewController, result: @escaping FlutterResult) {
-    /// 如果上一次相机请求还没结束，就先拒绝新的调用。
-    guard pendingCameraResult == nil else {
+    guard pendingMediaResult == nil else {
       result(
         FlutterError(
           code: "ALREADY_ACTIVE",
-          message: "A camera request is already in progress.",
+          message: "A media request is already in progress.",
           details: nil
         )
       )
       return
     }
 
-    /// 检查当前设备是否真的支持相机。
     guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
       result(
         FlutterError(
@@ -179,24 +171,78 @@ import UIKit
     picker.sourceType = .camera
     picker.delegate = self
 
-    /// 先把 Flutter 结果保存起来，等代理回调时再返回。
-    pendingCameraResult = result
+    pendingMediaResult = result
 
     controller.present(picker, animated: true)
   }
 
-  /// 用户拍照成功后的代理回调。
+  /// 打开系统相册选择图片。
   ///
-  /// 这里做三件事：
-  /// 1. 从系统相机结果里拿到图片
-  /// 2. 把图片写到临时目录
-  /// 3. 把图片路径回传给 Dart
+  /// 这是媒体类通道里的第二个方法。
+  /// 用户走的是“从相册选择”这条路径。
+  ///
+  /// 实现策略：
+  /// - iOS 14 及以上：优先使用更现代的 `PHPickerViewController`
+  /// - iOS 12 / 13：回退到 `UIImagePickerController` 的相册模式
+  private func pickImageFromGallery(from controller: FlutterViewController, result: @escaping FlutterResult) {
+    guard pendingMediaResult == nil else {
+      result(
+        FlutterError(
+          code: "ALREADY_ACTIVE",
+          message: "A media request is already in progress.",
+          details: nil
+        )
+      )
+      return
+    }
+
+    pendingMediaResult = result
+
+    if #available(iOS 14, *) {
+      /// 这是更现代的系统相册选择器。
+      var configuration = PHPickerConfiguration(photoLibrary: .shared())
+
+      /// `selectionLimit = 1` 表示当前示例只允许选一张图片。
+      configuration.selectionLimit = 1
+
+      /// 只允许选图片，不允许视频。
+      configuration.filter = .images
+
+      let picker = PHPickerViewController(configuration: configuration)
+      picker.delegate = self
+      controller.present(picker, animated: true)
+    } else {
+      /// iOS 12 / 13 回退到旧方案。
+      guard UIImagePickerController.isSourceTypeAvailable(.photoLibrary) else {
+        pendingMediaResult = nil
+        result(
+          FlutterError(
+            code: "UNAVAILABLE",
+            message: "Photo library is not available on this device.",
+            details: nil
+          )
+        )
+        return
+      }
+
+      let picker = UIImagePickerController()
+      picker.sourceType = .photoLibrary
+      picker.delegate = self
+      controller.present(picker, animated: true)
+    }
+  }
+
+  /// `UIImagePickerController` 成功返回时的代理回调。
+  ///
+  /// 这个回调既可能来自：
+  /// - 相机拍照
+  /// - 老版本 iOS 的相册选择
   func imagePickerController(
     _ picker: UIImagePickerController,
     didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
   ) {
-    let result = pendingCameraResult
-    pendingCameraResult = nil
+    let result = pendingMediaResult
+    pendingMediaResult = nil
 
     picker.dismiss(animated: true)
 
@@ -204,19 +250,17 @@ import UIKit
       return
     }
 
-    /// 从相机返回的数据里取出拍到的原始图片。
     guard let image = info[.originalImage] as? UIImage else {
       result(
         FlutterError(
           code: "IMAGE_ERROR",
-          message: "Failed to get image from camera.",
+          message: "Failed to get image from media picker.",
           details: nil
         )
       )
       return
     }
 
-    /// 把图片转成 JPEG 数据。
     guard let imageData = image.jpegData(compressionQuality: 0.9) else {
       result(
         FlutterError(
@@ -229,7 +273,7 @@ import UIKit
     }
 
     do {
-      let imagePath = try saveImageToTemporaryDirectory(imageData)
+      let imagePath = try saveImageToTemporaryDirectory(imageData, prefix: "media")
       result(imagePath)
     } catch {
       result(
@@ -242,35 +286,124 @@ import UIKit
     }
   }
 
-  /// 用户取消相机时的代理回调。
-  ///
-  /// 这里我们返回一个错误给 Dart，方便你在页面上明确看到“用户取消了”。
+  /// `UIImagePickerController` 取消时的代理回调。
   func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-    let result = pendingCameraResult
-    pendingCameraResult = nil
+    let result = pendingMediaResult
+    pendingMediaResult = nil
 
     picker.dismiss(animated: true)
 
     result?(
       FlutterError(
         code: "CANCELED",
-        message: "The camera operation was canceled.",
+        message: "The media operation was canceled.",
         details: nil
       )
     )
   }
 
-  /// 把拍到的图片写入 iOS 临时目录，并返回图片路径。
+  /// `PHPickerViewController` 返回时的代理回调。
+  ///
+  /// 这是 iOS 14+ 的现代相册选择器回调。
+  @available(iOS 14, *)
+  func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+    let result = pendingMediaResult
+    pendingMediaResult = nil
+
+    picker.dismiss(animated: true)
+
+    guard let result else {
+      return
+    }
+
+    guard let itemProvider = results.first?.itemProvider else {
+      result(
+        FlutterError(
+          code: "CANCELED",
+          message: "The gallery selection was canceled.",
+          details: nil
+        )
+      )
+      return
+    }
+
+    guard itemProvider.canLoadObject(ofClass: UIImage.self) else {
+      result(
+        FlutterError(
+          code: "UNSUPPORTED",
+          message: "The selected item is not a supported image.",
+          details: nil
+        )
+      )
+      return
+    }
+
+    /// `PHPicker` 的图片读取是异步的。
+    itemProvider.loadObject(ofClass: UIImage.self) { object, error in
+      DispatchQueue.main.async {
+        if let error {
+          result(
+            FlutterError(
+              code: "LOAD_ERROR",
+              message: "Failed to load image: \(error.localizedDescription)",
+              details: nil
+            )
+          )
+          return
+        }
+
+        guard let image = object as? UIImage else {
+          result(
+            FlutterError(
+              code: "IMAGE_ERROR",
+              message: "Failed to get UIImage from picker.",
+              details: nil
+            )
+          )
+          return
+        }
+
+        guard let imageData = image.jpegData(compressionQuality: 0.9) else {
+          result(
+            FlutterError(
+              code: "ENCODE_ERROR",
+              message: "Failed to encode image data.",
+              details: nil
+            )
+          )
+          return
+        }
+
+        do {
+          let imagePath = try self.saveImageToTemporaryDirectory(imageData, prefix: "gallery")
+          result(imagePath)
+        } catch {
+          result(
+            FlutterError(
+              code: "FILE_ERROR",
+              message: "Failed to save image: \(error.localizedDescription)",
+              details: nil
+            )
+          )
+        }
+      }
+    }
+  }
+
+  /// 把图片数据写入 iOS 临时目录，并返回图片路径。
   ///
   /// 为什么要存文件？
-  /// 因为 Dart 侧最容易处理的就是“图片路径”：
-  /// - 文字可以直接显示路径
-  /// - 后面也可以用 `Image.file` 加载图片
-  private func saveImageToTemporaryDirectory(_ imageData: Data) throws -> String {
+  /// 因为 Dart 侧现在统一按“图片路径”去做预览显示，
+  /// 所以不管图片来自：
+  /// - 相机
+  /// - 相册
+  ///
+  /// 最终都转换成一个本地路径返回给 Dart。
+  private func saveImageToTemporaryDirectory(_ imageData: Data, prefix: String) throws -> String {
     let directory = FileManager.default.temporaryDirectory
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyyMMdd_HHmmss"
-    let fileName = "camera_\(formatter.string(from: Date())).jpg"
+    let fileName = "\(prefix)_\(formatter.string(from: Date())).jpg"
     let fileURL = directory.appendingPathComponent(fileName)
 
     try imageData.write(to: fileURL)

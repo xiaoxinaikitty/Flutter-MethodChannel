@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'l10n/app_localizations.dart';
 import 'local_file_preview_stub.dart'
     if (dart.library.io) 'local_file_preview_io.dart';
 
@@ -8,369 +9,750 @@ void main() {
   runApp(const MyApp());
 }
 
-/// 应用入口组件。
-///
-/// 你可以先把 Flutter 应用理解成一棵组件树：
-/// `main()` -> `runApp()` -> `MyApp()` -> 首页组件
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class AppRoutes {
+  static const home = '/';
+  static const battery = '/battery';
+  static const deviceModel = '/device-model';
+  static const nativeMessage = '/native-message';
+  static const media = '/media';
+  static const i18n = '/i18n';
+}
+
+class PlatformChannels {
+  static const MethodChannel info = MethodChannel(
+    'samples.flutter.dev/battery',
+  );
+
+  static const MethodChannel media = MethodChannel(
+    'samples.flutter.dev/camera',
+  );
+}
+
+class MyApp extends StatefulWidget {
+  const MyApp({super.key, this.initialLocale});
+
+  final Locale? initialLocale;
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  Locale? _locale;
+
+  @override
+  void initState() {
+    super.initState();
+    _locale = widget.initialLocale;
+  }
+
+  void _setLocale(Locale? locale) {
+    setState(() {
+      _locale = locale;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MethodChannel Demo',
+      onGenerateTitle: (context) => context.l10n.text('appTitle'),
+      locale: _locale,
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: AppLocalizations.localizationDelegates,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2563EB)),
         useMaterial3: true,
       ),
-      home: const MethodChannelHomePage(),
+      routes: {
+        AppRoutes.home: (context) => const HomeDirectoryPage(),
+        AppRoutes.battery: (context) => const BatteryPage(),
+        AppRoutes.deviceModel: (context) => const DeviceModelPage(),
+        AppRoutes.nativeMessage: (context) => const NativeMessagePage(),
+        AppRoutes.media: (context) => const MediaPage(),
+        AppRoutes.i18n: (context) => I18nExamplePage(
+              currentLocale: _locale,
+              onLocaleChanged: _setLocale,
+            ),
+      },
     );
   }
 }
 
-/// 这是 MethodChannel 的演示首页。
-///
-/// 这个页面现在包含 4 个原生调用例子：
-/// 1. 获取手机电量
-/// 2. 获取设备型号
-/// 3. Dart 把参数传给原生，原生处理后再返回结果
-/// 4. Dart 调用原生系统相机
-///
-/// 之所以使用 `StatefulWidget`，是因为页面上的文字会随着调用结果变化。
-class MethodChannelHomePage extends StatefulWidget {
-  const MethodChannelHomePage({super.key});
+class FeatureEntry {
+  const FeatureEntry({
+    required this.titleKey,
+    required this.descriptionKey,
+    required this.routeName,
+    required this.icon,
+    required this.color,
+  });
 
-  @override
-  State<MethodChannelHomePage> createState() => _MethodChannelHomePageState();
+  final String titleKey;
+  final String descriptionKey;
+  final String routeName;
+  final IconData icon;
+  final Color color;
 }
 
-class _MethodChannelHomePageState extends State<MethodChannelHomePage> {
-  /// 这是一条“通信通道”。
-  ///
-  /// Dart 和原生都必须使用完全相同的通道名。
-  /// 你可以把它理解成 Flutter 拨给原生的固定号码。
-  static const MethodChannel _channel = MethodChannel(
-    'samples.flutter.dev/battery',
-  );
+class HomeDirectoryPage extends StatelessWidget {
+  const HomeDirectoryPage({super.key});
 
-  /// 这是新的“相机通道”。
-  ///
-  /// 为什么这次不继续复用 `battery` 通道？
-  /// 因为相机已经是一个新的功能模块了，单独拆成一条通道更容易理解：
-  /// - `samples.flutter.dev/battery` 负责信息类示例
-  /// - `samples.flutter.dev/camera` 负责相机类示例
-  static const MethodChannel _cameraChannel = MethodChannel(
-    'samples.flutter.dev/camera',
-  );
+  static const _features = [
+    FeatureEntry(
+      titleKey: 'batteryTitle',
+      descriptionKey: 'batteryDescription',
+      routeName: AppRoutes.battery,
+      icon: Icons.battery_charging_full,
+      color: Color(0xFF0F766E),
+    ),
+    FeatureEntry(
+      titleKey: 'deviceTitle',
+      descriptionKey: 'deviceDescription',
+      routeName: AppRoutes.deviceModel,
+      icon: Icons.phone_android,
+      color: Color(0xFF2563EB),
+    ),
+    FeatureEntry(
+      titleKey: 'nativeMessageTitle',
+      descriptionKey: 'nativeMessageDescription',
+      routeName: AppRoutes.nativeMessage,
+      icon: Icons.sync_alt,
+      color: Color(0xFFC2410C),
+    ),
+    FeatureEntry(
+      titleKey: 'mediaTitle',
+      descriptionKey: 'mediaDescription',
+      routeName: AppRoutes.media,
+      icon: Icons.add_photo_alternate,
+      color: Color(0xFF7C3AED),
+    ),
+    FeatureEntry(
+      titleKey: 'i18nTitle',
+      descriptionKey: 'i18nDescription',
+      routeName: AppRoutes.i18n,
+      icon: Icons.translate,
+      color: Color(0xFFBE123C),
+    ),
+  ];
 
-  /// 第一块结果区域：显示电量调用结果。
-  String _batteryText = '点击按钮后，这里会显示原生返回的手机电量';
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
 
-  /// 第二块结果区域：显示设备型号调用结果。
-  String _deviceModelText = '点击按钮后，这里会显示原生返回的设备型号';
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(context.l10n.text('homeTitle')),
+        backgroundColor: theme.colorScheme.inversePrimary,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                context.l10n.text('homeTitle'),
+                style: theme.textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                context.l10n.text('homeSubtitle'),
+                style: theme.textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 16),
+              _PlatformHintCard(),
+              const SizedBox(height: 24),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth >= 720;
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _features.length,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: isWide ? 2 : 1,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      mainAxisExtent: isWide ? 128 : 124,
+                    ),
+                    itemBuilder: (context, index) {
+                      return _FeatureButton(entry: _features[index]);
+                    },
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
-  /// 第三块结果区域：显示“Dart 传参给原生”后的返回结果。
-  String _nativeMessageText = '先在输入框里输入名字，再点击按钮把参数传给原生';
+class _FeatureButton extends StatelessWidget {
+  const _FeatureButton({required this.entry});
 
-  /// 第四块结果区域：显示系统相机调用结果。
-  String _cameraText = '点击按钮后，Dart 会调用原生系统相机，拍照完成后直接在页面显示图片';
+  final FeatureEntry entry;
 
-  /// 这是拍照成功后保存下来的本地图片路径。
-  ///
-  /// 页面不再直接展示这段路径文字，
-  /// 但仍然会把它保存在状态里，供图片预览组件读取。
-  String? _cameraImagePath;
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final title = context.l10n.text(entry.titleKey);
+    final description = context.l10n.text(entry.descriptionKey);
 
-  /// 这是输入框控制器。
-  ///
-  /// `TextEditingController` 的作用是：
-  /// 1. 读取输入框当前内容
-  /// 2. 需要时修改输入框内容
-  /// 3. 在 Dart 里拿到用户输入，再传给原生
+    return Material(
+      color: theme.colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(8),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).pushNamed(entry.routeName),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: entry.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(entry.icon, color: entry.color),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlatformHintCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, color: theme.colorScheme.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  context.l10n.text('platformTitle'),
+                  style: theme.textTheme.titleSmall,
+                ),
+                const SizedBox(height: 4),
+                Text(_platformHint(context)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _platformHint(BuildContext context) {
+  if (kIsWeb) {
+    return context.l10n.text('platformWeb');
+  }
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    return context.l10n.text('platformAndroid');
+  }
+  if (defaultTargetPlatform == TargetPlatform.iOS) {
+    return context.l10n.text('platformIOS');
+  }
+  return context.l10n.text('platformOther');
+}
+
+String _formatNativeError(
+  BuildContext context,
+  String methodName,
+  Object error,
+) {
+  if (error is MissingPluginException) {
+    return context.l10n.format('missingPlugin', {'method': methodName});
+  }
+  if (error is PlatformException) {
+    return context.l10n.format('platformError', {
+      'code': error.code,
+      'message': error.message ?? '无详细信息',
+    });
+  }
+  return context.l10n.format('unexpectedError', {'error': error});
+}
+
+class DemoPageScaffold extends StatelessWidget {
+  const DemoPageScaffold({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.children,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: theme.colorScheme.inversePrimary,
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Text(title, style: theme.textTheme.headlineSmall),
+            const SizedBox(height: 8),
+            Text(subtitle, style: theme.textTheme.bodyLarge),
+            const SizedBox(height: 24),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ResultPanel extends StatelessWidget {
+  const ResultPanel({
+    super.key,
+    required this.title,
+    required this.content,
+    this.extra,
+  });
+
+  final String title;
+  final String content;
+  final Widget? extra;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(content, style: theme.textTheme.bodyLarge),
+        ),
+        if (extra != null) ...[
+          const SizedBox(height: 12),
+          extra!,
+        ],
+      ],
+    );
+  }
+}
+
+class LoadingFilledButton extends StatelessWidget {
+  const LoadingFilledButton({
+    super.key,
+    required this.isLoading,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final bool isLoading;
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: isLoading ? null : onPressed,
+        icon: isLoading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(icon),
+        label: Text(isLoading ? context.l10n.text('requesting') : label),
+      ),
+    );
+  }
+}
+
+class BatteryPage extends StatefulWidget {
+  const BatteryPage({super.key});
+
+  @override
+  State<BatteryPage> createState() => _BatteryPageState();
+}
+
+class _BatteryPageState extends State<BatteryPage> {
+  bool _isLoading = false;
+  String? _resultText;
+
+  Future<void> _getBatteryLevel() async {
+    setState(() {
+      _isLoading = true;
+      _resultText = context.l10n.text('batteryLoading');
+    });
+
+    try {
+      final batteryLevel =
+          await PlatformChannels.info.invokeMethod<int>('getBatteryLevel');
+      setState(() {
+        _resultText = batteryLevel == null
+            ? context.l10n.text('batteryEmpty')
+            : context.l10n.format('batterySuccess', {'value': batteryLevel});
+      });
+    } catch (error) {
+      setState(() {
+        _resultText = _formatNativeError(context, 'getBatteryLevel', error);
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DemoPageScaffold(
+      title: context.l10n.text('batteryTitle'),
+      subtitle: context.l10n.text('batteryDescription'),
+      children: [
+        ResultPanel(
+          title: context.l10n.text('result'),
+          content: _resultText ?? context.l10n.text('batteryInitial'),
+        ),
+        const SizedBox(height: 16),
+        LoadingFilledButton(
+          isLoading: _isLoading,
+          icon: Icons.battery_charging_full,
+          label: context.l10n.text('getBattery'),
+          onPressed: _getBatteryLevel,
+        ),
+      ],
+    );
+  }
+}
+
+class DeviceModelPage extends StatefulWidget {
+  const DeviceModelPage({super.key});
+
+  @override
+  State<DeviceModelPage> createState() => _DeviceModelPageState();
+}
+
+class _DeviceModelPageState extends State<DeviceModelPage> {
+  bool _isLoading = false;
+  String? _resultText;
+
+  Future<void> _getDeviceModel() async {
+    setState(() {
+      _isLoading = true;
+      _resultText = context.l10n.text('deviceLoading');
+    });
+
+    try {
+      final deviceModel =
+          await PlatformChannels.info.invokeMethod<String>('getDeviceModel');
+      setState(() {
+        _resultText = deviceModel == null || deviceModel.trim().isEmpty
+            ? context.l10n.text('deviceEmpty')
+            : context.l10n.format('deviceSuccess', {'value': deviceModel});
+      });
+    } catch (error) {
+      setState(() {
+        _resultText = _formatNativeError(context, 'getDeviceModel', error);
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DemoPageScaffold(
+      title: context.l10n.text('deviceTitle'),
+      subtitle: context.l10n.text('deviceDescription'),
+      children: [
+        ResultPanel(
+          title: context.l10n.text('result'),
+          content: _resultText ?? context.l10n.text('deviceInitial'),
+        ),
+        const SizedBox(height: 16),
+        LoadingFilledButton(
+          isLoading: _isLoading,
+          icon: Icons.phone_android,
+          label: context.l10n.text('getDeviceModel'),
+          onPressed: _getDeviceModel,
+        ),
+      ],
+    );
+  }
+}
+
+class NativeMessagePage extends StatefulWidget {
+  const NativeMessagePage({super.key});
+
+  @override
+  State<NativeMessagePage> createState() => _NativeMessagePageState();
+}
+
+class _NativeMessagePageState extends State<NativeMessagePage> {
   final TextEditingController _nameController = TextEditingController(
     text: 'Flutter 初学者',
   );
 
-  /// 两个按钮各自独立控制加载状态。
-  ///
-  /// 这样当你请求“设备型号”时，不会把“获取电量”按钮也一起禁用。
-  bool _isBatteryLoading = false;
-  bool _isDeviceModelLoading = false;
-  bool _isNativeMessageLoading = false;
-  bool _isCameraLoading = false;
+  bool _isLoading = false;
+  String? _resultText;
 
   @override
   void dispose() {
-    /// `TextEditingController` 属于需要手动释放的对象。
-    ///
-    /// 页面销毁时调用 `dispose()`，是 Flutter 很常见的资源清理写法。
     _nameController.dispose();
     super.dispose();
   }
 
-  /// 这是一个通用的原生调用辅助方法。
-  ///
-  /// 为什么要单独封装？
-  /// 因为“获取电量”和“获取设备型号”的流程高度相似：
-  /// 1. 设置加载状态
-  /// 2. 调用原生方法
-  /// 3. 成功后刷新结果
-  /// 4. 失败后显示错误
-  /// 5. 最后关闭加载状态
-  ///
-  /// 把公共流程抽出来后，页面代码会更容易阅读。
-  Future<void> _invokePlatformMethod<T>({
-    required String methodName,
-    Object? arguments,
-    required void Function() onStart,
-    required void Function(T? result) onSuccess,
-    required void Function(String message) onError,
-    required void Function() onFinish,
-  }) async {
-    onStart();
-
-    try {
-      /// `arguments` 就是 Dart 传给原生的参数。
-      ///
-      /// 如果这个方法不需要参数，就保持 `null`。
-      /// 如果这个方法需要参数，就可以传：
-      /// - `String`
-      /// - `int`
-      /// - `bool`
-      /// - `Map`
-      /// - `List`
-      final T? result = await _channel.invokeMethod<T>(methodName, arguments);
-      onSuccess(result);
-    } on MissingPluginException {
-      onError(
-        '当前平台没有实现 `$methodName`。'
-        '\n如果你是在 Windows / Web 上运行，这是正常的，因为示例只实现了 Android/iOS。',
-      );
-    } on PlatformException catch (error) {
-      onError(
-        '调用原生失败：${error.code}'
-        '\n错误信息：${error.message ?? '无详细信息'}',
-      );
-    } catch (error) {
-      onError('发生未预期错误：$error');
-    } finally {
-      onFinish();
-    }
-  }
-
-  /// 示例 1：获取原生手机电量。
-  ///
-  /// 这里调用的是原生方法名：`getBatteryLevel`
-  Future<void> _getBatteryLevel() async {
-    await _invokePlatformMethod<int>(
-      methodName: 'getBatteryLevel',
-      onStart: () {
-        setState(() {
-          _isBatteryLoading = true;
-          _batteryText = '正在向原生平台请求电量...';
-        });
-      },
-      onSuccess: (batteryLevel) {
-        setState(() {
-          if (batteryLevel == null) {
-            _batteryText = '原生返回了空数据，请检查返回值';
-          } else {
-            _batteryText = '当前电量：$batteryLevel%';
-          }
-        });
-      },
-      onError: (message) {
-        setState(() {
-          _batteryText = message;
-        });
-      },
-      onFinish: () {
-        setState(() {
-          _isBatteryLoading = false;
-        });
-      },
-    );
-  }
-
-  /// 示例 2：获取原生设备型号。
-  ///
-  /// 这里调用的是另一个原生方法名：`getDeviceModel`
-  ///
-  /// 这正是 MethodChannel 很重要的一点：
-  /// 同一条通道里，可以放多个不同的方法。
-  Future<void> _getDeviceModel() async {
-    await _invokePlatformMethod<String>(
-      methodName: 'getDeviceModel',
-      onStart: () {
-        setState(() {
-          _isDeviceModelLoading = true;
-          _deviceModelText = '正在向原生平台请求设备型号...';
-        });
-      },
-      onSuccess: (deviceModel) {
-        setState(() {
-          if (deviceModel == null || deviceModel.trim().isEmpty) {
-            _deviceModelText = '原生返回了空字符串，请检查返回值';
-          } else {
-            _deviceModelText = '当前设备型号：$deviceModel';
-          }
-        });
-      },
-      onError: (message) {
-        setState(() {
-          _deviceModelText = message;
-        });
-      },
-      onFinish: () {
-        setState(() {
-          _isDeviceModelLoading = false;
-        });
-      },
-    );
-  }
-
-  /// 示例 3：Dart 传一个参数给原生，原生处理后再返回结果。
-  ///
-  /// 这个例子是学习 MethodChannel 的关键一步，因为它比“单纯调用原生”
-  /// 多了一层“参数传递”。
-  ///
-  /// 这次的流程是：
-  /// 1. 先从输入框取出用户输入的名字
-  /// 2. 把名字放进一个 `Map`
-  /// 3. Dart 调用原生方法 `processUserName`
-  /// 4. Android / iOS 从参数里取出 `name`
-  /// 5. 原生做一点字符串处理
-  /// 6. 原生把处理后的结果返回给 Dart
   Future<void> _sendNameToNative() async {
-    /// 先读取输入框内容。
     final String inputName = _nameController.text.trim();
 
-    /// 如果输入为空，就不继续调用原生。
     if (inputName.isEmpty) {
       setState(() {
-        _nativeMessageText = '请先输入一个名字，再点击“把名字传给原生”';
+        _resultText = context.l10n.text('nativeEmptyInput');
       });
       return;
     }
 
-    await _invokePlatformMethod<String>(
-      /// 这是第三个原生方法名。
-      methodName: 'processUserName',
-
-      /// 这里就是 Dart 传给原生的参数。
-      ///
-      /// 这次我们传的是一个 `Map<String, dynamic>`。
-      /// 其中：
-      /// - `name` 是用户输入的名字
-      /// - `from` 用来告诉原生：这次请求来自 Dart
-      arguments: <String, dynamic>{
-        'name': inputName,
-        'from': 'dart',
-      },
-      onStart: () {
-        setState(() {
-          _isNativeMessageLoading = true;
-          _nativeMessageText = '正在把参数传给原生，并等待原生处理结果...';
-        });
-      },
-      onSuccess: (nativeMessage) {
-        setState(() {
-          if (nativeMessage == null || nativeMessage.trim().isEmpty) {
-            _nativeMessageText = '原生返回了空字符串，请检查参数处理逻辑';
-          } else {
-            _nativeMessageText = nativeMessage;
-          }
-        });
-      },
-      onError: (message) {
-        setState(() {
-          _nativeMessageText = message;
-        });
-      },
-      onFinish: () {
-        setState(() {
-          _isNativeMessageLoading = false;
-        });
-      },
-    );
-  }
-
-  /// 示例 4：Dart 调用原生系统相机。
-  ///
-  /// 这个例子和前面三个例子最大的不同是：
-  /// 前面三个例子基本都是“调用后很快返回”
-  /// 而相机是“先打开系统界面，等用户拍照完成后，原生再异步返回结果”
-  ///
-  /// 执行流程：
-  /// 1. Dart 点击按钮
-  /// 2. Dart 调用 `samples.flutter.dev/camera` 通道上的 `openCamera`
-  /// 3. Android / iOS 原生打开系统相机
-  /// 4. 用户拍照
-  /// 5. 原生把图片路径返回给 Dart
-  Future<void> _openNativeCamera() async {
     setState(() {
-      _isCameraLoading = true;
-      _cameraText = '正在请求原生系统相机...';
+      _isLoading = true;
+      _resultText = context.l10n.text('nativeLoading');
     });
 
     try {
-      /// 这里返回的是拍照后图片的本地路径。
-      final String? imagePath = await _cameraChannel.invokeMethod<String>(
-        'openCamera',
+      final nativeMessage = await PlatformChannels.info.invokeMethod<String>(
+        'processUserName',
+        <String, dynamic>{
+          'name': inputName,
+          'from': 'dart',
+        },
       );
-
       setState(() {
-        if (imagePath == null || imagePath.trim().isEmpty) {
-          _cameraImagePath = null;
-          _cameraText = '原生相机返回了空路径，请检查原生保存逻辑';
-        } else {
-          _cameraImagePath = imagePath;
-          _cameraText = '拍照成功，下面就是原生系统相机返回的图片';
-        }
-      });
-    } on MissingPluginException {
-      setState(() {
-        _cameraImagePath = null;
-        _cameraText = '当前平台没有实现相机通道。'
-            '\n如果你是在 Windows / Web 上运行，这是正常的。';
-      });
-    } on PlatformException catch (error) {
-      setState(() {
-        _cameraImagePath = null;
-        _cameraText = '调用系统相机失败：${error.code}'
-            '\n错误信息：${error.message ?? '无详细信息'}';
+        _resultText = nativeMessage == null || nativeMessage.trim().isEmpty
+            ? context.l10n.text('nativeEmpty')
+            : nativeMessage;
       });
     } catch (error) {
       setState(() {
-        _cameraImagePath = null;
-        _cameraText = '发生未预期错误：$error';
+        _resultText = _formatNativeError(context, 'processUserName', error);
       });
     } finally {
       setState(() {
-        _isCameraLoading = false;
+        _isLoading = false;
       });
     }
   }
 
-  /// 清空当前拍照结果。
-  ///
-  /// 这个操作只清 Flutter 页面上的状态，不会回头删除原生缓存文件。
-  /// 对当前教学示例来说，这样更简单，也更容易理解。
-  void _clearCameraImage() {
+  @override
+  Widget build(BuildContext context) {
+    return DemoPageScaffold(
+      title: context.l10n.text('nativeMessageTitle'),
+      subtitle: context.l10n.text('nativeMessageDescription'),
+      children: [
+        ResultPanel(
+          title: context.l10n.text('result'),
+          content: _resultText ?? context.l10n.text('nativeInitial'),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _nameController,
+          decoration: InputDecoration(
+            border: const OutlineInputBorder(),
+            labelText: context.l10n.text('nameLabel'),
+            hintText: context.l10n.text('nameHint'),
+          ),
+        ),
+        const SizedBox(height: 16),
+        LoadingFilledButton(
+          isLoading: _isLoading,
+          icon: Icons.send,
+          label: context.l10n.text('sendName'),
+          onPressed: _sendNameToNative,
+        ),
+        const SizedBox(height: 24),
+        _CodeBlock(
+          title: context.l10n.text('learningFocus'),
+          code: """await PlatformChannels.info.invokeMethod<String>(
+  'processUserName',
+  <String, dynamic>{
+    'name': inputName,
+    'from': 'dart',
+  },
+);""",
+        ),
+      ],
+    );
+  }
+}
+
+class MediaPage extends StatefulWidget {
+  const MediaPage({super.key});
+
+  @override
+  State<MediaPage> createState() => _MediaPageState();
+}
+
+class _MediaPageState extends State<MediaPage> {
+  bool _isLoading = false;
+  String? _resultText;
+  String? _imagePath;
+
+  Future<void> _invokeMediaMethod({
+    required String methodName,
+    required String loadingKey,
+    required String successKey,
+  }) async {
     setState(() {
-      _cameraImagePath = null;
-      _cameraText = '图片已清空。你可以点击“重新拍照”或“打开系统相机”继续测试。';
+      _isLoading = true;
+      _resultText = context.l10n.text(loadingKey);
+    });
+
+    try {
+      final String? imagePath =
+          await PlatformChannels.media.invokeMethod<String>(methodName);
+
+      setState(() {
+        if (imagePath == null || imagePath.trim().isEmpty) {
+          _imagePath = null;
+          _resultText = context.l10n.text('mediaEmpty');
+        } else {
+          _imagePath = imagePath;
+          _resultText = context.l10n.text(successKey);
+        }
+      });
+    } catch (error) {
+      setState(() {
+        _imagePath = null;
+        _resultText = _formatNativeError(context, methodName, error);
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _showImageSourceActionSheet() async {
+    final String? action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: Text(context.l10n.text('camera')),
+                subtitle: Text(context.l10n.text('cameraSubtitle')),
+                onTap: () => Navigator.of(context).pop('camera'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: Text(context.l10n.text('gallery')),
+                subtitle: Text(context.l10n.text('gallerySubtitle')),
+                onTap: () => Navigator.of(context).pop('gallery'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.close),
+                title: Text(context.l10n.text('cancel')),
+                onTap: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || action == null) {
+      return;
+    }
+
+    if (action == 'camera') {
+      await _invokeMediaMethod(
+        methodName: 'openCamera',
+        loadingKey: 'cameraLoading',
+        successKey: 'cameraSuccess',
+      );
+    } else if (action == 'gallery') {
+      await _invokeMediaMethod(
+        methodName: 'pickImageFromGallery',
+        loadingKey: 'galleryLoading',
+        successKey: 'gallerySuccess',
+      );
+    }
+  }
+
+  void _clearImage() {
+    setState(() {
+      _imagePath = null;
+      _resultText = context.l10n.text('imageCleared');
     });
   }
 
-  /// 点击预览图后，弹出一个放大查看的对话框。
-  ///
-  /// 这样你就能看到：
-  /// 1. 页面上的缩略图
-  /// 2. 点击后查看大图
-  void _showCameraPreviewDialog() {
-    final imagePath = _cameraImagePath;
-
+  void _showPreviewDialog() {
+    final imagePath = _imagePath;
     if (imagePath == null || imagePath.isEmpty) {
       return;
     }
@@ -387,22 +769,19 @@ class _MethodChannelHomePageState extends State<MethodChannelHomePage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  '拍照预览',
+                  context.l10n.text('previewTitle'),
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 16),
                 Flexible(
                   child: SingleChildScrollView(
-                    child: buildLocalFilePreview(
-                      imagePath,
-                      height: 420,
-                    ),
+                    child: buildLocalFilePreview(imagePath, height: 420),
                   ),
                 ),
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('关闭'),
+                  child: Text(context.l10n.text('close')),
                 ),
               ],
             ),
@@ -412,244 +791,215 @@ class _MethodChannelHomePageState extends State<MethodChannelHomePage> {
     );
   }
 
-  /// 根据当前平台显示提示文字。
-  String _platformHint() {
-    if (kIsWeb) {
-      return '当前运行平台：Web。'
-          '\nWeb 没有 Android/iOS 这一层原生代码，所以这里主要用于学习 Dart 写法。';
-    }
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return '当前运行平台：Android。'
-          '\n本项目已实现 4 个原生示例：获取电量、获取设备型号、Dart 传参、调用系统相机。';
-    }
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      return '当前运行平台：iOS。'
-          '\n本项目已实现 4 个原生示例：获取电量、获取设备型号、Dart 传参、调用系统相机。';
-    }
-    return '当前运行平台不是 Android/iOS。'
-        '\n页面可以正常打开，但调用原生方法时通常会提示未实现。';
-  }
-
-  /// 把重复的“结果卡片”抽成一个小组件方法，页面结构更清晰。
-  Widget _buildResultCard({
-    required BuildContext context,
-    required String title,
-    required String content,
-    Widget? extra,
-  }) {
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  @override
+  Widget build(BuildContext context) {
+    return DemoPageScaffold(
+      title: context.l10n.text('mediaTitle'),
+      subtitle: context.l10n.text('mediaDescription'),
       children: [
-        Text(
-          title,
-          style: theme.textTheme.titleMedium,
+        ResultPanel(
+          title: context.l10n.text('result'),
+          content: _resultText ?? context.l10n.text('mediaInitial'),
+          extra: _imagePath == null
+              ? null
+              : GestureDetector(
+                  onTap: _showPreviewDialog,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      buildLocalFilePreview(_imagePath!),
+                      const SizedBox(height: 8),
+                      Text(
+                        context.l10n.text('previewHint'),
+                        style: Theme.of(context).textTheme.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
         ),
-        const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            content,
-            style: theme.textTheme.bodyLarge,
-          ),
+        const SizedBox(height: 16),
+        LoadingFilledButton(
+          isLoading: _isLoading,
+          icon: Icons.add_photo_alternate,
+          label: context.l10n.text('chooseImageSource'),
+          onPressed: _showImageSourceActionSheet,
         ),
-        if (extra != null) ...[
+        if (_imagePath != null) ...[
           const SizedBox(height: 12),
-          extra,
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _showImageSourceActionSheet,
+                  icon: const Icon(Icons.refresh),
+                  label: Text(context.l10n.text('reselectImage')),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _clearImage,
+                  icon: const Icon(Icons.delete_outline),
+                  label: Text(context.l10n.text('clearImage')),
+                ),
+              ),
+            ],
+          ),
         ],
       ],
     );
   }
+}
+
+class I18nExamplePage extends StatelessWidget {
+  const I18nExamplePage({
+    super.key,
+    required this.currentLocale,
+    required this.onLocaleChanged,
+  });
+
+  final Locale? currentLocale;
+  final ValueChanged<Locale?> onLocaleChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedLanguage = currentLocale?.languageCode ?? 'system';
+
+    return DemoPageScaffold(
+      title: context.l10n.text('i18nTitle'),
+      subtitle: context.l10n.text('i18nDescription'),
+      children: [
+        ResultPanel(
+          title: context.l10n.text('i18nCurrentTextTitle'),
+          content: context.l10n.text('i18nCurrentText'),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          context.l10n.text('language'),
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        SegmentedButton<String>(
+          segments: [
+            ButtonSegment<String>(
+              value: 'system',
+              label: Text(context.l10n.text('system')),
+              icon: const Icon(Icons.settings_suggest),
+            ),
+            ButtonSegment<String>(
+              value: 'zh',
+              label: Text(context.l10n.text('chinese')),
+              icon: const Icon(Icons.language),
+            ),
+            ButtonSegment<String>(
+              value: 'en',
+              label: Text(context.l10n.text('english')),
+              icon: const Icon(Icons.translate),
+            ),
+          ],
+          selected: {selectedLanguage},
+          onSelectionChanged: (selection) {
+            final value = selection.first;
+            onLocaleChanged(value == 'system' ? null : Locale(value));
+          },
+        ),
+        const SizedBox(height: 24),
+        _LearningPoints(
+          points: [
+            context.l10n.text('i18nStep1'),
+            context.l10n.text('i18nStep2'),
+            context.l10n.text('i18nStep3'),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _CodeBlock(
+          title: context.l10n.text('codeMaterialApp'),
+          code: """MaterialApp(
+  locale: _locale,
+  supportedLocales: const [
+    Locale('zh'),
+    Locale('en'),
+  ],
+  localizationsDelegates: const [
+    AppLocalizations.delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+  ],
+);""",
+        ),
+        const SizedBox(height: 16),
+        _CodeBlock(
+          title: context.l10n.text('codeLookup'),
+          code: """Text(context.l10n.text('homeTitle'));
+
+// 切换中文
+onLocaleChanged(const Locale('zh'));
+
+// 切换英文
+onLocaleChanged(const Locale('en'));
+
+// 恢复跟随系统
+onLocaleChanged(null);""",
+        ),
+      ],
+    );
+  }
+}
+
+class _LearningPoints extends StatelessWidget {
+  const _LearningPoints({required this.points});
+
+  final List<String> points;
+
+  @override
+  Widget build(BuildContext context) {
+    return ResultPanel(
+      title: context.l10n.text('learningFocus'),
+      content: points.join('\n'),
+    );
+  }
+}
+
+class _CodeBlock extends StatelessWidget {
+  const _CodeBlock({
+    required this.title,
+    required this.code,
+  });
+
+  final String title;
+  final String code;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('MethodChannel 入门示例'),
-        backgroundColor: theme.colorScheme.inversePrimary,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '学习目标',
-                style: theme.textTheme.titleLarge,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF111827),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SelectableText(
+              code,
+              style: const TextStyle(
+                color: Color(0xFFE5E7EB),
+                fontFamily: 'monospace',
+                height: 1.45,
               ),
-              const SizedBox(height: 8),
-              const Text(
-                '这个页面演示 Flutter 如何通过 MethodChannel 调用多个原生能力，'
-                '并让 Android / iOS 把结果返回给 Dart 层。',
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(_platformHint()),
-                ),
-              ),
-              const SizedBox(height: 24),
-              _buildResultCard(
-                context: context,
-                title: '示例 1：获取原生手机电量',
-                content: _batteryText,
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _isBatteryLoading ? null : _getBatteryLevel,
-                  icon: _isBatteryLoading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.battery_charging_full),
-                  label: Text(_isBatteryLoading ? '请求中...' : '获取原生电量'),
-                ),
-              ),
-              const SizedBox(height: 28),
-              _buildResultCard(
-                context: context,
-                title: '示例 2：获取原生设备型号',
-                content: _deviceModelText,
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _isDeviceModelLoading ? null : _getDeviceModel,
-                  icon: _isDeviceModelLoading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.phone_android),
-                  label: Text(_isDeviceModelLoading ? '请求中...' : '获取设备型号'),
-                ),
-              ),
-              const SizedBox(height: 28),
-              _buildResultCard(
-                context: context,
-                title: '示例 3：Dart 传参数给原生，原生处理后返回结果',
-                content: _nativeMessageText,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: '输入一个名字',
-                  hintText: '例如：小明',
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _isNativeMessageLoading ? null : _sendNameToNative,
-                  icon: _isNativeMessageLoading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.send),
-                  label: Text(
-                    _isNativeMessageLoading ? '请求中...' : '把名字传给原生',
-                  ),
-                ),
-              ),
-              const SizedBox(height: 28),
-              _buildResultCard(
-                context: context,
-                title: '示例 4：Dart 调用原生系统相机',
-                content: _cameraText,
-                extra: _cameraImagePath == null
-                    ? null
-                    : GestureDetector(
-                        onTap: _showCameraPreviewDialog,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            buildLocalFilePreview(_cameraImagePath!),
-                            const SizedBox(height: 8),
-                            Text(
-                              '点击图片可放大查看',
-                              style: theme.textTheme.bodySmall,
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _isCameraLoading ? null : _openNativeCamera,
-                  icon: _isCameraLoading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.camera_alt),
-                  label: Text(_isCameraLoading ? '请求中...' : '打开系统相机'),
-                ),
-              ),
-              if (_cameraImagePath != null) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _isCameraLoading ? null : _openNativeCamera,
-                        icon: const Icon(Icons.camera),
-                        label: const Text('重新拍照'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _isCameraLoading ? null : _clearCameraImage,
-                        icon: const Icon(Icons.delete_outline),
-                        label: const Text('清空照片'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 28),
-              Text(
-                '你现在可以重点观察八件事：',
-                style: theme.textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              const Text('1. 信息类示例使用的通道：samples.flutter.dev/battery'),
-              const Text('2. 相机示例使用的通道：samples.flutter.dev/camera'),
-              const Text('3. 第一种调用的方法名：getBatteryLevel'),
-              const Text('4. 第二种调用的方法名：getDeviceModel'),
-              const Text('5. 第三种调用的方法名：processUserName'),
-              const Text('6. 第四种调用的方法名：openCamera'),
-              const Text('7. Dart 如何通过 arguments 把 Map 传给原生'),
-              const Text('8. 相机为什么属于“异步返回结果”的原生调用'),
-            ],
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 }

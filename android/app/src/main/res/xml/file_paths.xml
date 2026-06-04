@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     这个文件是给 Android FileProvider 用的。
+
+     它的作用是告诉系统：
+     “我们允许通过 FileProvider 共享哪些目录下的文件。”
+
+     这里选择的是 `cache-path`，也就是应用缓存目录。
+     拍照后的临时图片会先保存到这里，再把路径返回给 Dart。
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path
+        name="camera_images"
+        path="images/" />
+</paths>
