@@ -1,13 +1,19 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'l10n/app_localizations.dart';
 import 'local_file_preview_stub.dart'
     if (dart.library.io) 'local_file_preview_io.dart';
+import 'state_management/state_management_page.dart';
 import 'theme/app_theme.dart';
 
 void main() {
-  runApp(const MyApp());
+  /// ProviderScope 是 Riverpod 的全局容器。
+  ///
+  /// 只有把 App 放到 ProviderScope 下面，
+  /// 后续页面才能使用 ref.watch / ref.read 访问 provider。
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 /// 统一管理页面路由名。
@@ -22,6 +28,7 @@ class AppRoutes {
   static const media = '/media';
   static const i18n = '/i18n';
   static const theme = '/theme';
+  static const stateManagement = '/state-management';
 }
 
 /// 统一管理 Flutter 与原生通信使用的 MethodChannel。
@@ -140,6 +147,7 @@ class _MyAppState extends State<MyApp> {
               onThemeModeChanged: _setThemeMode,
               onSeedColorChanged: _setSeedColor,
             ),
+        AppRoutes.stateManagement: (context) => const StateManagementPage(),
       },
     );
   }
@@ -214,6 +222,13 @@ class HomeDirectoryPage extends StatelessWidget {
       routeName: AppRoutes.theme,
       icon: Icons.palette,
       color: Color(0xFFC2410C),
+    ),
+    FeatureEntry(
+      titleKey: 'stateManagementTitle',
+      descriptionKey: 'stateManagementDescription',
+      routeName: AppRoutes.stateManagement,
+      icon: Icons.account_tree,
+      color: Color(0xFF0369A1),
     ),
   ];
 

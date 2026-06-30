@@ -17,6 +17,9 @@
 13. [Dio 比 Http 多的功能有哪些](#13-dio-比-http-多的功能有哪些)
 14. [关于非对称加密和对称加密你知道多少](#14-关于非对称加密和对称加密你知道多少)
 15. [HTTP 和 HTTPS 有什么不同，加密的方式有哪种](#15-http-和-https-有什么不同加密的方式有哪种)
+16. [如何实现多主题切换](#16-如何实现多主题切换)
+17. [几种状态管理的优缺点](#17-几种状态管理的优缺点)
+18. [MVC、MVVM、MVP 架构有什么区别](#18-mvcmvvmmvp-架构有什么区别)
 
 ## 1. Flutter 的渲染机制
 
@@ -126,9 +129,149 @@ class MainActivity : FlutterActivity() {
 
 ## 3. 如何实现国际化
 
-Flutter 国际化通常使用官方的 `flutter_localizations` 和 `intl`。
+Flutter 国际化的核心目标是：让同一套页面根据不同 `Locale` 展示不同语言文案。
 
-基本步骤：
+常见方案有两种：
+
+- 官方 `gen-l10n` + `.arb` 文件，适合正式项目。
+- 手写 `AppLocalizations` + `LocalizationsDelegate`，适合理解原理和小型 Demo。
+
+当前项目使用的是第二种方式，并把国际化逻辑抽离到了：
+
+```text
+lib/l10n/app_localizations.dart
+```
+
+### 当前项目实现步骤
+
+1. 在 `pubspec.yaml` 中引入 `flutter_localizations`。
+2. 创建 `AppLocalizations` 类，集中管理支持语言和文案表。
+3. 创建 `LocalizationsDelegate`，告诉 Flutter 如何加载本地化对象。
+4. 在 `MaterialApp` 中配置 `locale`、`supportedLocales`、`localizationsDelegates`。
+5. 页面中通过 `context.l10n.text(key)` 读取文案。
+6. 切换语言时修改 `MaterialApp.locale`，触发整棵 App 重新构建。
+
+当前项目的核心代码：
+
+```dart
+MaterialApp(
+  onGenerateTitle: (context) => context.l10n.text('appTitle'),
+  locale: _locale,
+  supportedLocales: AppLocalizations.supportedLocales,
+  localizationsDelegates: AppLocalizations.localizationDelegates,
+)
+```
+
+其中：
+
+- `_locale == null`：跟随系统语言。
+- `_locale == const Locale('zh')`：强制中文。
+- `_locale == const Locale('en')`：强制英文。
+
+`AppLocalizations` 中通过 Map 保存文案：
+
+```dart
+static const Map<String, Map<String, String>> _values = {
+  'zh': {
+    'homeTitle': 'MethodChannel 学习目录',
+  },
+  'en': {
+    'homeTitle': 'MethodChannel Study Directory',
+  },
+};
+```
+
+页面使用：
+
+```dart
+Text(context.l10n.text('homeTitle'));
+```
+
+如果是带参数的文案，可以使用：
+
+```dart
+context.l10n.format('batterySuccess', {'value': batteryLevel});
+```
+
+### 面试追问 1：`supportedLocales` 有什么作用？
+
+`supportedLocales` 用来告诉 Flutter 当前 App 支持哪些语言。
+
+例如：
+
+```dart
+static const supportedLocales = [
+  Locale('zh'),
+  Locale('en'),
+];
+```
+
+Flutter 会根据系统语言和这个列表做匹配，决定当前应该加载哪个本地化对象。
+
+### 面试追问 2：`localizationsDelegates` 有什么作用？
+
+`localizationsDelegates` 用来告诉 Flutter 如何加载不同类型的本地化资源。
+
+当前项目里封装成：
+
+```dart
+static const List<LocalizationsDelegate<dynamic>> localizationDelegates = [
+  delegate,
+  GlobalMaterialLocalizations.delegate,
+  GlobalWidgetsLocalizations.delegate,
+  GlobalCupertinoLocalizations.delegate,
+];
+```
+
+其中：
+
+- `delegate` 是项目自己的文案代理。
+- `GlobalMaterialLocalizations.delegate` 负责 Material 组件内置文案。
+- `GlobalWidgetsLocalizations.delegate` 负责基础 Widgets 本地化。
+- `GlobalCupertinoLocalizations.delegate` 负责 iOS 风格组件本地化。
+
+### 面试追问 3：如何实现运行时语言切换？
+
+把 `MaterialApp.locale` 绑定到状态变量。
+
+```dart
+Locale? _locale;
+
+void _setLocale(Locale? locale) {
+  setState(() {
+    _locale = locale;
+  });
+}
+```
+
+用户选择语言时调用 `_setLocale`：
+
+```dart
+onLocaleChanged(const Locale('en'));
+onLocaleChanged(const Locale('zh'));
+onLocaleChanged(null); // 跟随系统
+```
+
+`setState` 后 `MaterialApp` 重新构建，页面中的 `context.l10n.text(...)` 会读取新语言文案。
+
+### 面试追问 4：手写国际化方案和官方 gen-l10n 有什么区别？
+
+手写方案优点：
+
+- 容易理解原理。
+- 代码集中，适合 Demo。
+- 不依赖代码生成。
+
+缺点：
+
+- 文案多了以后 Map 会很长。
+- key 写错运行时才发现。
+- 复数、性别、日期格式等复杂场景不好处理。
+- 翻译协作不如 `.arb` 文件方便。
+
+正式项目更推荐官方 `gen-l10n`。
+
+### 官方 gen-l10n 基本步骤
 
 1. 在 `pubspec.yaml` 中引入依赖。
 2. 开启 `generate: true`。
@@ -928,4 +1071,1035 @@ HTTPS 简化握手流程：
 HTTP 是明文传输，HTTPS = HTTP + TLS。
 HTTPS 通过证书解决身份认证问题，通过非对称加密或密钥协商解决密钥安全交换问题，
 再通过对称加密传输真实数据，同时用摘要或 MAC 机制保证完整性。
+```
+
+## 16. 如何实现多主题切换
+
+Flutter 多主题切换的核心是控制 `MaterialApp` 的三个属性：
+
+```dart
+theme
+darkTheme
+themeMode
+```
+
+当前项目把主题逻辑抽离到了：
+
+```text
+lib/theme/app_theme.dart
+```
+
+页面入口在首页目录中，具体设置页是 `ThemeSettingsPage`。
+
+### 当前项目实现思路
+
+1. 用 `ThemeMode` 表示当前主题模式。
+2. 用一个 `Color seedColor` 表示当前主题色。
+3. 用 `ColorScheme.fromSeed` 生成 Material 3 色板。
+4. 在 `MaterialApp` 中配置浅色主题、深色主题和当前主题模式。
+5. 用户切换主题时，调用 `setState` 更新 `_themeMode` 或 `_seedColor`。
+6. `MaterialApp` 重新构建，整个 App 主题更新。
+
+核心代码：
+
+```dart
+ThemeMode _themeMode = ThemeMode.system;
+Color _seedColor = AppTheme.defaultSeedColor;
+
+MaterialApp(
+  theme: AppTheme.light(_seedColor),
+  darkTheme: AppTheme.dark(_seedColor),
+  themeMode: _themeMode,
+)
+```
+
+### 面试追问 1：`ThemeMode.system`、`ThemeMode.light`、`ThemeMode.dark` 有什么区别？
+
+`ThemeMode.system` 表示跟随系统主题。
+
+如果系统是浅色模式，Flutter 使用 `theme`。
+
+如果系统是深色模式，Flutter 使用 `darkTheme`。
+
+`ThemeMode.light` 表示强制使用浅色主题。
+
+`ThemeMode.dark` 表示强制使用深色主题。
+
+总结：
+
+```text
+ThemeMode.system -> 跟随系统
+ThemeMode.light  -> 永远使用 theme
+ThemeMode.dark   -> 永远使用 darkTheme
+```
+
+### 面试追问 2：`ColorScheme.fromSeed` 有什么作用？
+
+`ColorScheme.fromSeed` 是 Material 3 推荐的配色生成方式。
+
+它可以根据一个核心颜色自动推导出完整色板：
+
+- primary
+- secondary
+- tertiary
+- surface
+- background
+- error
+- container 系列颜色
+
+当前项目中：
+
+```dart
+static ThemeData light(Color seedColor) {
+  return ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: Brightness.light,
+    ),
+    useMaterial3: true,
+  );
+}
+```
+
+深色主题只需要把 `brightness` 改成：
+
+```dart
+Brightness.dark
+```
+
+### 面试追问 3：如何实现主题色切换？
+
+当前项目使用一个主题色列表：
+
+```dart
+static const options = [
+  AppThemeOption(nameKey: 'themeColorBlue', color: Color(0xFF2563EB)),
+  AppThemeOption(nameKey: 'themeColorTeal', color: Color(0xFF0F766E)),
+  AppThemeOption(nameKey: 'themeColorRose', color: Color(0xFFBE123C)),
+];
+```
+
+用户点击颜色选项时：
+
+```dart
+void _setSeedColor(Color seedColor) {
+  setState(() {
+    _seedColor = seedColor;
+  });
+}
+```
+
+`_seedColor` 改变后：
+
+```dart
+theme: AppTheme.light(_seedColor),
+darkTheme: AppTheme.dark(_seedColor),
+```
+
+会重新生成主题，整个 App 的颜色随之变化。
+
+### 面试追问 4：主题设置页面为什么只通过回调修改状态？
+
+当前项目中 `ThemeSettingsPage` 接收：
+
+```dart
+final ThemeMode themeMode;
+final Color seedColor;
+final ValueChanged<ThemeMode> onThemeModeChanged;
+final ValueChanged<Color> onSeedColorChanged;
+```
+
+它本身不保存全局主题状态，而是通过回调通知 `MyApp` 修改。
+
+好处是：
+
+- 全局状态集中在 `MyApp`。
+- 设置页只负责展示和触发事件。
+- 数据流方向清晰。
+- 后续替换成 Provider、Riverpod、Bloc 时更容易。
+
+### 面试追问 5：如何让主题选择重启后仍然生效？
+
+当前项目的主题选择只保存在内存中，App 重启后会恢复默认值。
+
+如果要持久化，可以使用 `shared_preferences` 保存：
+
+```text
+themeMode: system / light / dark
+seedColor: 0xFF2563EB
+```
+
+启动时读取本地配置，再初始化主题状态。
+
+基本流程：
+
+```text
+用户切换主题
+        ↓
+保存 themeMode 和 seedColor
+        ↓
+下次启动读取本地配置
+        ↓
+初始化 MaterialApp 的主题状态
+```
+
+### 面试追问 6：主题切换时为什么页面会自动变色？
+
+因为页面组件大多使用的是 Theme 中的颜色，而不是写死颜色。
+
+例如：
+
+```dart
+Theme.of(context).colorScheme.primary
+Theme.of(context).colorScheme.surfaceContainerHighest
+FilledButton
+AppBar
+ChoiceChip
+```
+
+当 `MaterialApp` 的主题变化时，`Theme` 这个 `InheritedWidget` 会通知下方依赖它的组件重新构建。
+
+所以页面不需要手动逐个改颜色。
+
+### 面试回答总结
+
+可以这样回答：
+
+```text
+Flutter 多主题切换通常通过 MaterialApp 的 theme、darkTheme 和 themeMode 实现。
+themeMode 决定使用浅色、深色还是跟随系统。
+主题色可以通过 ColorScheme.fromSeed 根据 seedColor 生成完整色板。
+用户切换主题时更新 ThemeMode 或 seedColor，再触发 App 重建。
+为了结构清晰，可以把主题生成逻辑抽到 AppTheme 中，把设置页面通过回调通知根组件修改全局主题状态。
+```
+
+## 17. 几种状态管理的优缺点
+
+Flutter 状态管理没有绝对最优，核心是根据状态复杂度、作用范围、团队协作方式选择合适方案。
+
+常见分类可以这样记：
+
+```text
+页面内部简单状态 -> setState
+单个响应式值 -> ValueNotifier
+对象级共享状态 -> ChangeNotifier / Provider
+现代依赖和异步状态 -> Riverpod
+强业务流和团队规范 -> Bloc / Cubit
+快速开发和响应式绑定 -> GetX
+```
+
+### 17.1 setState
+
+`setState` 是 Flutter 原生最基础的状态管理。
+
+实现方式：
+
+```dart
+int count = 0;
+
+setState(() {
+  count++;
+});
+```
+
+优点：
+
+- Flutter 原生支持，不需要三方库。
+- 学习成本最低。
+- 适合页面内部小状态。
+- 代码直观，调试简单。
+
+缺点：
+
+- 只适合当前 `StatefulWidget` 内部。
+- 不适合跨页面共享状态。
+- 页面复杂后，业务逻辑容易和 UI 混在一起。
+- `setState` 范围过大时，可能导致不必要的 build。
+
+适合场景：
+
+- 按钮展开/收起
+- 当前页面计数器
+- 临时 loading 状态
+- 表单局部状态
+
+面试总结：
+
+```text
+setState 适合页面内部简单状态，不适合全局状态和复杂业务状态。
+```
+
+### 17.2 ValueNotifier
+
+`ValueNotifier` 适合管理单个值，并通过 `ValueListenableBuilder` 局部刷新 UI。
+
+实现方式：
+
+```dart
+final count = ValueNotifier<int>(0);
+
+ValueListenableBuilder<int>(
+  valueListenable: count,
+  builder: (context, value, child) {
+    return Text('$value');
+  },
+);
+
+count.value++;
+```
+
+优点：
+
+- Flutter 原生能力，不需要三方库。
+- 比 `setState` 更细粒度。
+- 只重建监听区域。
+- 适合单个简单值。
+
+缺点：
+
+- 只适合单值状态。
+- 多字段、多业务方法时会变得混乱。
+- 跨页面共享时需要自己管理对象生命周期。
+- 不适合复杂异步和依赖注入场景。
+
+适合场景：
+
+- 计数器
+- 开关状态
+- 当前选中 index
+- 简单输入状态
+
+面试总结：
+
+```text
+ValueNotifier 是比 setState 更细粒度的原生响应式状态，适合单个简单值。
+```
+
+### 17.3 ChangeNotifier
+
+`ChangeNotifier` 适合一个对象中管理多个字段，修改后通过 `notifyListeners()` 通知 UI。
+
+实现方式：
+
+```dart
+class CounterModel extends ChangeNotifier {
+  int count = 0;
+
+  void increment() {
+    count++;
+    notifyListeners();
+  }
+}
+```
+
+优点：
+
+- Flutter 原生类，理解成本低。
+- 可以把多个状态和方法封装到一个对象里。
+- 适合配合 Provider 使用。
+- 小中型项目上手快。
+
+缺点：
+
+- 需要手动调用 `notifyListeners()`。
+- 所有监听者都会收到通知，粒度不如 Riverpod 精细。
+- 状态多了以后，类容易变成“大杂烩”。
+- 异步状态、错误状态、缓存状态需要自己设计。
+
+适合场景：
+
+- 用户信息
+- 设置项
+- 简单列表状态
+- 小型项目共享状态
+
+面试总结：
+
+```text
+ChangeNotifier 适合简单对象级状态，但复杂项目中容易膨胀，通知粒度也不够细。
+```
+
+### 17.4 Provider
+
+Provider 常用于把对象暴露给 Widget 树，让子组件读取或监听。
+
+典型用法：
+
+```dart
+ChangeNotifierProvider(
+  create: (_) => CounterModel(),
+  child: const MyApp(),
+);
+```
+
+读取：
+
+```dart
+context.watch<CounterModel>();
+context.read<CounterModel>();
+```
+
+优点：
+
+- Flutter 社区经典方案。
+- 适合学习 `InheritedWidget` 和依赖注入思想。
+- 与 `ChangeNotifier` 搭配简单。
+- 对小中型项目足够。
+
+缺点：
+
+- 依赖 `BuildContext`。
+- Provider 嵌套多时结构不够清晰。
+- 异步状态表达不如 Riverpod。
+- 类型和依赖关系不如 Riverpod 明确。
+
+适合场景：
+
+- 小中型项目
+- 简单全局状态
+- 传统 `ChangeNotifier` 架构
+
+面试总结：
+
+```text
+Provider 是经典状态共享方案，适合简单共享状态，但复杂异步和依赖关系下 Riverpod 更清晰。
+```
+
+### 17.5 Riverpod
+
+Riverpod 可以理解为 Provider 思路的升级版，既能做状态管理，也能做依赖注入。
+
+实现方式：
+
+```dart
+final counterProvider = StateProvider<int>((ref) => 0);
+
+final count = ref.watch(counterProvider);
+
+ref.read(counterProvider.notifier).state++;
+```
+
+复杂状态：
+
+```dart
+final todoProvider =
+    NotifierProvider<TodoNotifier, List<String>>(TodoNotifier.new);
+```
+
+优点：
+
+- 不依赖 `BuildContext`。
+- 依赖关系更清晰。
+- 更容易测试。
+- 对异步状态支持好，例如 `FutureProvider`、`AsyncNotifierProvider`。
+- 可以管理 Service、Repository、缓存、全局状态。
+- 适合中大型新项目。
+
+缺点：
+
+- 概念比 Provider 多。
+- 初学需要理解 `ProviderScope`、`ref.watch`、`ref.read`、provider 生命周期。
+- 如果团队没有统一规范，也可能写得分散。
+
+适合场景：
+
+- 新项目
+- 中大型项目
+- 接口请求状态
+- 全局配置
+- 依赖注入
+- 可测试业务状态
+
+面试总结：
+
+```text
+Riverpod 不依赖 BuildContext，能统一管理状态和依赖，尤其适合异步状态和中大型项目。
+```
+
+### 17.6 Bloc / Cubit
+
+Bloc / Cubit 强调清晰的数据流和业务状态建模。
+
+Cubit 示例：
+
+```dart
+class CounterCubit extends Cubit<int> {
+  CounterCubit() : super(0);
+
+  void increment() => emit(state + 1);
+}
+```
+
+Bloc 示例：
+
+```dart
+bloc.add(CounterIncrementPressed());
+```
+
+优点：
+
+- 结构规范。
+- 状态流清晰。
+- 非常适合复杂业务。
+- 非常适合团队协作。
+- 测试友好。
+- Event -> State 的模型适合面试表达。
+
+缺点：
+
+- 样板代码多。
+- 简单功能写起来偏重。
+- 学习成本高于 Provider / Riverpod。
+- 需要团队遵守统一分层，否则也会变乱。
+
+适合场景：
+
+- 企业项目
+- 复杂业务流程
+- 强状态流要求
+- 多人协作项目
+- 需要严格测试的业务模块
+
+面试总结：
+
+```text
+Bloc / Cubit 适合复杂业务流和团队协作，优点是规范和可测试，缺点是样板代码多。
+```
+
+### 17.7 GetX
+
+GetX 是一个功能很全的工具库，包含：
+
+- 状态管理
+- 路由
+- 依赖注入
+- 国际化
+- 弹窗、Snackbar 等工具
+
+常见响应式写法：
+
+```dart
+final count = 0.obs;
+
+Obx(() {
+  return Text('${controller.count.value}');
+});
+```
+
+常见简单更新写法：
+
+```dart
+GetBuilder<CounterController>(
+  builder: (controller) {
+    return Text('${controller.count}');
+  },
+);
+```
+
+优点：
+
+- 上手快。
+- 代码量少。
+- 响应式写法直观。
+- 路由、依赖注入、状态管理一套都能做。
+- 适合快速开发和小团队项目。
+
+缺点：
+
+- 功能太集中，容易形成强耦合。
+- 全局访问太方便，容易滥用。
+- 大项目中状态来源可能不清晰。
+- 如果到处使用 `.obs` 和 `Obx`，重建范围和依赖关系容易混乱。
+- 测试和长期维护不如 Riverpod / Bloc 清晰。
+
+面试总结：
+
+```text
+GetX 优点是开发效率高，缺点是容易全局耦合。小项目很方便，大项目要控制使用边界。
+```
+
+### 17.8 GetX 中 Obx 的优点和缺点
+
+`Obx` 是 GetX 的响应式 Widget。
+
+实现方式：
+
+```dart
+class CounterController extends GetxController {
+  final count = 0.obs;
+}
+
+Obx(() {
+  return Text('${controller.count.value}');
+});
+```
+
+优点：
+
+- 写法非常简单。
+- 状态变化后自动刷新 UI。
+- 不需要手动调用 `update()`。
+- 适合局部、小范围响应式 UI。
+- 多个 `.obs` 可以组合在同一个 `Obx` 中读取。
+
+缺点：
+
+- `Obx` 中读取了哪些响应式变量，决定了它依赖哪些状态，依赖关系可能不够显式。
+- 如果 `Obx` 包裹范围太大，会导致较大 UI 区域重建。
+- 过度使用 `.obs` 容易让状态分散。
+- 对复杂业务流程，单纯靠 `Obx` 容易缺少清晰分层。
+- 调试大项目时，状态来源可能不如 Riverpod / Bloc 清楚。
+
+推荐使用场景：
+
+- 小范围局部刷新
+- 计数器
+- 开关
+- 输入状态
+- 页面中某个独立区域的响应式展示
+
+不推荐：
+
+- 用一个大 `Obx` 包住整个页面
+- Controller 里所有字段都 `.obs`
+- 把业务流程都塞进 UI 响应式变量
+
+### 17.9 GetX 中 GetBuilder 的优点和缺点
+
+`GetBuilder` 是 GetX 中更接近手动刷新的一种方式。
+
+实现方式：
+
+```dart
+class CounterController extends GetxController {
+  int count = 0;
+
+  void increment() {
+    count++;
+    update();
+  }
+}
+
+GetBuilder<CounterController>(
+  builder: (controller) {
+    return Text('${controller.count}');
+  },
+);
+```
+
+优点：
+
+- 不需要 `.obs`。
+- 控制更明确，调用 `update()` 才刷新。
+- 性能可控。
+- 适合简单页面状态。
+- 可以通过 `id` 精准刷新某一块 UI。
+
+缺点：
+
+- 需要手动调用 `update()`。
+- 忘记调用 `update()`，UI 不会刷新。
+- 响应式体验不如 `Obx` 自动。
+- 复杂状态下也需要合理拆分 Controller。
+
+适合场景：
+
+- 表单页面
+- 简单页面刷新
+- 不需要高频响应式的状态
+- 希望明确控制刷新时机的 UI
+
+### 17.10 GetX 中应该怎么用更规范？
+
+如果项目使用 GetX，更规范的做法是：
+
+1. Controller 只管理当前业务模块，不要写成全局万能 Controller。
+2. 简单局部响应式状态用 `Obx`。
+3. 明确刷新时机、低频更新用 `GetBuilder`。
+4. 不要用一个大 `Obx` 包住整个页面。
+5. 不要所有字段都声明成 `.obs`。
+6. 业务逻辑放 Controller，UI 只负责展示。
+7. 接口请求、缓存、数据转换尽量抽到 Repository / Service。
+8. Controller 生命周期要明确，避免随意 `Get.put` 全局常驻。
+
+推荐结构：
+
+```text
+feature/
+  controller/
+    user_controller.dart
+  repository/
+    user_repository.dart
+  page/
+    user_page.dart
+  widgets/
+    user_card.dart
+```
+
+更规范的 GetX 使用建议：
+
+```text
+Obx：用于小范围、自动响应式刷新。
+GetBuilder：用于明确手动刷新、低频变化区域。
+Controller：只放页面或模块状态，不要承担网络层、缓存层全部职责。
+Repository：负责数据来源，例如接口、本地缓存、MethodChannel。
+```
+
+### 17.11 面试中如何回答状态管理选择？
+
+可以这样回答：
+
+```text
+如果是页面内部小状态，我用 setState。
+如果只是单个值变化，我可以用 ValueNotifier。
+如果是简单对象状态，可以用 ChangeNotifier 或 Provider。
+如果是新项目，并且有较多异步请求、依赖注入和全局状态，我更推荐 Riverpod。
+如果是复杂企业业务流，团队强调事件和状态规范，我会考虑 Bloc / Cubit。
+如果项目已经使用 GetX，我会控制 Obx 的范围，简单响应式用 Obx，明确刷新用 GetBuilder，并把网络和缓存逻辑抽到 Repository，避免 Controller 过重。
+```
+
+## 18. MVC、MVVM、MVP 架构有什么区别
+
+MVC、MVVM、MVP 都是为了做一件事：
+
+```text
+拆分 UI、业务逻辑、数据逻辑，降低耦合，提高可维护性和可测试性。
+```
+
+它们的核心区别在于：
+
+```text
+谁负责处理用户行为？
+谁负责维护页面状态？
+View 和业务逻辑之间如何通信？
+```
+
+### 18.1 MVC
+
+MVC = Model + View + Controller。
+
+结构：
+
+```text
+Model      数据模型、业务数据
+View       页面 UI
+Controller 接收用户操作，处理业务逻辑，更新 Model 或通知 View
+```
+
+在 Flutter 中可以这样对应：
+
+```text
+Model       User、Article、ThemeState
+View        Widget 页面
+Controller  GetX Controller、普通 Controller 类
+```
+
+目录示例：
+
+```text
+lib/
+  features/
+    user/
+      model/
+        user.dart
+      view/
+        user_page.dart
+      controller/
+        user_controller.dart
+```
+
+简单示例：
+
+```dart
+class User {
+  const User({
+    required this.name,
+  });
+
+  final String name;
+}
+
+class UserController {
+  User user = const User(name: 'Tom');
+
+  void updateName(String name) {
+    user = User(name: name);
+  }
+}
+```
+
+优点：
+
+- 结构简单，容易理解。
+- 上手快，适合小项目。
+- 很多传统 Android / iOS / Web 项目都能看到类似思想。
+- GetX 项目中经常使用 Controller 管理页面逻辑，接近 MVC 思路。
+
+缺点：
+
+- Controller 容易变胖。
+- 页面逻辑、业务逻辑、网络请求可能都堆进 Controller。
+- View 和 Controller 边界如果不清晰，后期维护成本高。
+- 在 Flutter 声明式 UI 中，传统 MVC 的 View 更新方式不一定最自然。
+
+适合场景：
+
+- 小项目
+- Demo
+- 后台管理页面
+- 业务逻辑不复杂的 GetX 项目
+
+不适合场景：
+
+- 大型复杂业务
+- 强测试要求项目
+- 多人长期维护项目
+
+面试总结：
+
+```text
+MVC 的优点是简单直观，缺点是 Controller 容易膨胀。Flutter 中可以用 Widget 作为 View，Controller 处理用户行为和业务逻辑，但复杂项目要避免 Controller 变成万能类。
+```
+
+### 18.2 MVVM
+
+MVVM = Model + View + ViewModel。
+
+结构：
+
+```text
+Model      数据模型、数据来源
+View       页面 UI
+ViewModel 维护页面状态，处理页面逻辑，给 View 暴露可观察状态
+```
+
+在 Flutter 中可以这样对应：
+
+```text
+Model      User、Todo、ThemeState
+View       Widget 页面
+ViewModel  ChangeNotifier、Riverpod Notifier、Cubit
+```
+
+目录示例：
+
+```text
+lib/
+  features/
+    user/
+      model/
+        user.dart
+      view/
+        user_page.dart
+      view_model/
+        user_view_model.dart
+      repository/
+        user_repository.dart
+```
+
+简单示例：
+
+```dart
+class UserViewModel extends ChangeNotifier {
+  User? user;
+  bool isLoading = false;
+
+  Future<void> loadUser() async {
+    isLoading = true;
+    notifyListeners();
+
+    user = const User(name: 'Tom');
+
+    isLoading = false;
+    notifyListeners();
+  }
+}
+```
+
+如果用 Riverpod，可以这样理解：
+
+```dart
+class UserNotifier extends Notifier<User?> {
+  @override
+  User? build() {
+    return null;
+  }
+
+  void updateUser(User user) {
+    state = user;
+  }
+}
+```
+
+优点：
+
+- UI 和状态逻辑分离。
+- ViewModel 更适合管理页面状态。
+- 非常适合 Flutter 的声明式 UI。
+- 配合 Provider、Riverpod、Cubit 都很自然。
+- 可测试性比 MVC 更好。
+- 页面复杂时结构更清晰。
+
+缺点：
+
+- 文件数量比 MVC 多。
+- 小页面可能显得偏重。
+- ViewModel 如果不拆分，也可能变胖。
+- 需要团队约定 ViewModel 和 Repository 的边界。
+
+适合场景：
+
+- 中小型 Flutter 项目
+- 页面状态较多的项目
+- 需要可测试性的页面
+- Riverpod / Provider / Cubit 项目
+
+不适合场景：
+
+- 极小 Demo
+- 没有明显状态逻辑的静态页面
+
+面试总结：
+
+```text
+MVVM 更适合 Flutter，因为 Flutter 是声明式 UI，View 可以监听 ViewModel 的状态变化自动重建。ViewModel 负责状态和页面逻辑，View 只负责展示，因此可维护性和可测试性更好。
+```
+
+### 18.3 MVP
+
+MVP = Model + View + Presenter。
+
+结构：
+
+```text
+Model      数据模型、数据来源
+View       页面接口，只负责展示
+Presenter 处理业务逻辑，主动调用 View 接口更新 UI
+```
+
+传统 MVP 通常会定义 View 接口：
+
+```dart
+abstract class UserView {
+  void showLoading();
+  void showUser(User user);
+  void showError(String message);
+}
+```
+
+Presenter：
+
+```dart
+class UserPresenter {
+  UserPresenter(this.view);
+
+  final UserView view;
+
+  Future<void> loadUser() async {
+    view.showLoading();
+    try {
+      final user = const User(name: 'Tom');
+      view.showUser(user);
+    } catch (error) {
+      view.showError('$error');
+    }
+  }
+}
+```
+
+在 Flutter 中，MVP 使用得相对少。
+
+原因是 Flutter 是声明式 UI，通常更推荐：
+
+```text
+状态变化 -> Widget 重新 build
+```
+
+而 MVP 更偏传统命令式 UI：
+
+```text
+Presenter 主动调用 View.showXxx()
+```
+
+优点：
+
+- View 和业务逻辑分离明显。
+- Presenter 可以单元测试。
+- 适合传统命令式 UI 框架。
+
+缺点：
+
+- Flutter 中不够自然。
+- 需要定义 View 接口，代码偏繁琐。
+- Presenter 持有 View，生命周期处理不好容易出问题。
+- 页面状态复杂时，手动调用 `showLoading`、`showUser`、`showError` 会变得啰嗦。
+
+适合场景：
+
+- 传统 Android / iOS 迁移思路
+- 强接口隔离的项目
+- 对命令式 UI 更新模型更熟悉的团队
+
+不适合场景：
+
+- 大多数 Flutter 新项目
+- 声明式状态驱动 UI 的项目
+
+面试总结：
+
+```text
+MVP 的 Presenter 负责业务逻辑，并通过 View 接口主动更新 UI。它在传统客户端中常见，但 Flutter 更适合状态驱动 UI，所以现在 Flutter 项目里 MVP 不如 MVVM、Bloc、Riverpod 常见。
+```
+
+### 18.4 MVC、MVVM、MVP 对比
+
+| 架构 | View 负责什么 | 逻辑放哪里 | UI 如何更新 | Flutter 推荐程度 |
+|---|---|---|---|---|
+| MVC | 展示 UI | Controller | Controller 修改状态后通知 UI | 一般 |
+| MVVM | 展示 UI，监听状态 | ViewModel | 状态变化后 View 自动重建 | 高 |
+| MVP | 实现 View 接口 | Presenter | Presenter 主动调用 View 方法 | 较低 |
+
+更简单地记：
+
+```text
+MVC：Controller 控制页面逻辑。
+MVVM：ViewModel 暴露状态，View 监听状态。
+MVP：Presenter 调用 View 接口更新 UI。
+```
+
+### 18.5 Flutter 中更推荐哪个？
+
+Flutter 更推荐 MVVM 思路。
+
+原因：
+
+- Flutter 是声明式 UI。
+- 页面更适合根据状态自动 build。
+- ViewModel / Notifier / Cubit 都能很好表达页面状态。
+- 可测试性更好。
+- 和 Riverpod、Provider、Bloc/Cubit 都能自然结合。
+
+推荐组合：
+
+```text
+小项目：
+Feature-first + 简单 MVVM
+
+中大型项目：
+Feature-first + MVVM + Riverpod
+
+复杂企业项目：
+Feature-first + Clean Architecture + Bloc / Cubit
+```
+
+### 18.6 面试中怎么回答
+
+可以这样回答：
+
+```text
+MVC、MVVM、MVP 都是为了解耦 UI、状态和业务逻辑。
+MVC 中 Controller 处理用户行为和业务逻辑，优点是简单，缺点是 Controller 容易膨胀。
+MVVM 中 ViewModel 维护页面状态，View 监听状态变化自动更新，更适合 Flutter 的声明式 UI。
+MVP 中 Presenter 处理逻辑并主动调用 View 接口更新 UI，它在传统客户端中常见，但 Flutter 中使用相对少。
+实际 Flutter 项目里，我更推荐 Feature-first + MVVM，再结合 Riverpod、Provider 或 Cubit 管理状态。
 ```

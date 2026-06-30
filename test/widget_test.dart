@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:channel/main.dart';
 
@@ -7,7 +8,11 @@ import 'package:channel/main.dart';
 ///
 /// 国际化项目如果不固定 Locale，测试环境可能因为系统语言不同而不稳定。
 Future<void> pumpChineseApp(WidgetTester tester) async {
-  await tester.pumpWidget(const MyApp(initialLocale: Locale('zh')));
+  await tester.pumpWidget(
+    const ProviderScope(
+      child: MyApp(initialLocale: Locale('zh')),
+    ),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -23,6 +28,7 @@ void main() {
     expect(find.text('调用系统相机 / 相册'), findsOneWidget);
     expect(find.text('国际化代码示例'), findsOneWidget);
     expect(find.text('多主题切换'), findsOneWidget);
+    expect(find.text('状态管理学习'), findsOneWidget);
   });
 
   /// 专门验证窄屏中文布局不会再出现 RenderFlex overflow。
@@ -99,5 +105,27 @@ void main() {
 
     expect(find.text('主题预览'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  /// 验证状态管理学习页可以进入，并能展示 Riverpod 示例。
+  testWidgets('opens state management page and shows Riverpod examples', (
+    WidgetTester tester,
+  ) async {
+    await pumpChineseApp(tester);
+
+    await tester.ensureVisible(find.text('状态管理学习'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('状态管理学习'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('原生基础'), findsOneWidget);
+    expect(find.text('Riverpod'), findsOneWidget);
+    expect(find.text('Bloc/Cubit'), findsOneWidget);
+
+    await tester.tap(find.text('Riverpod'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Provider：只读依赖'), findsOneWidget);
+    expect(find.text('StateProvider：简单可变状态'), findsOneWidget);
   });
 }

@@ -58,6 +58,9 @@ class AppLocalizations {
           '演示 Locale、LocalizationsDelegate、supportedLocales 和语言切换。',
       'themeTitle': '多主题切换',
       'themeDescription': '演示 ThemeMode、浅色/深色模式和主题色切换。',
+      'stateManagementTitle': '状态管理学习',
+      'stateManagementDescription':
+          '按照 setState、ValueNotifier、Riverpod、Bloc/Cubit 的路线学习状态管理。',
       'themeModeTitle': '主题模式',
       'themeColorTitle': '主题色',
       'themePreviewTitle': '主题预览',
@@ -154,6 +157,9 @@ class AppLocalizations {
       'themeTitle': 'Theme switching',
       'themeDescription':
           'Learn ThemeMode, light/dark mode, and seed color switching.',
+      'stateManagementTitle': 'State management',
+      'stateManagementDescription':
+          'Learn state management from setState and ValueNotifier to Riverpod and Bloc/Cubit.',
       'themeModeTitle': 'Theme mode',
       'themeColorTitle': 'Theme color',
       'themePreviewTitle': 'Theme preview',
